@@ -41,6 +41,27 @@ namespace GarçomDoKitts.configs
             }
         }
 
+        public static async Task Write(string location, object toWrite)
+        {
+            string json = JsonConvert.SerializeObject(toWrite);
+
+            using (StreamWriter sw = new StreamWriter(location))
+            {
+                await sw.WriteAsync(json);
+            }
+        }
+
+        public static async Task<object> Load(string location, Type type)
+        {
+            string json;
+
+            using (StreamReader sr = new StreamReader(location))
+            {
+                json = await sr.ReadToEndAsync();
+                return JsonConvert.DeserializeObject(json, type);
+            }
+        }
+
     }
 
     public class TokenJSON

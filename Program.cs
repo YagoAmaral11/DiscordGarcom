@@ -28,7 +28,7 @@ namespace GarçomDoKitts
 
         public static FraseDoDia dailyFrase = new FraseDoDia();
 
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
             await ConfigIO.LoadConfig(); // Carrega configs
             InitDiscordConfig(); // Inicia o client do Discord para o bot
@@ -67,22 +67,6 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }
 
-        public static void StartLogic()
-        {
-            // Timer
-            mainTimer = new Timer(config.mainTimerIntervalMs);
-            mainTimer.AutoReset = true;
-            mainTimer.Enabled = true;
-            mainTimer.Elapsed += Loop;
-
-            // Módulos
-            dailyFrase.Init();            
-
-            // Eventos
-            client.MessageCreated += Client_MessageCreated;
-            client.MessageDeleted += Client_MessageDeleted;
-        }
-
         private static Task Client_MessageDeleted(DiscordClient sender, DSharpPlus.EventArgs.MessageDeleteEventArgs args)
         {
             dailyFrase.FrasePossivelmenteDeletada(sender, args);
@@ -97,15 +81,40 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }
 
+
+        public static void StartLogic()
+        {
+            // Timer
+            mainTimer = new Timer(config.mainTimerIntervalMs);
+            mainTimer.AutoReset = true;
+            mainTimer.Enabled = true;
+            mainTimer.Elapsed += Loop;
+
+            // Módulos
+            dailyFrase.Init();
+
+            // Eventos
+            client.MessageCreated += Client_MessageCreated;
+            client.MessageDeleted += Client_MessageDeleted;
+
+            // Outros
+            ConfigBlank();
+        }
+
         private static void Loop(object sender, ElapsedEventArgs e)
         {
             if (config.logTicks)
             {
-                Console.WriteLine($"[{DateTime.Now}] Bot Ticking");
-                Console.WriteLine($"(DailyFrase) {dailyFrase.tempoParaFraseMs}");
+                Console.WriteLine($"[{DateTime.Now}] Bot Ticking");                
             }
 
             dailyFrase.Loop();
+        }
+
+        public async static void ConfigBlank(string name = "configTemplate")
+        {
+            ConfigJSON json = new ConfigJSON();
+            await ConfigIO.Write(name, json);
         }
 
     }
