@@ -154,6 +154,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BotCode\Commands.cs" />
     <Compile Include="BotCode\ConfigIO.cs" />
     <Compile Include="BotCode\Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

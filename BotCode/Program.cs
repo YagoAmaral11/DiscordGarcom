@@ -41,6 +41,7 @@ namespace GarçomDoKitts
 
             await ConfigIO.LoadConfig(); // Carrega configs
             await InitDiscordConfig(); // Inicia o client do Discord para o bot            
+            await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
             await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
             await InitModules();
             await Task.Delay(-1);
@@ -87,6 +88,16 @@ namespace GarçomDoKitts
 
             Console.WriteLine("(Program) Inicialização finalizada");
 
+            return Task.CompletedTask;
+        }
+
+        private static Task InitCommands()
+        {
+            Console.WriteLine("(Program) Registrando comandos");
+
+            commands.RegisterCommands<Commands>();
+
+            Console.WriteLine("(Program) Comandos registrados");
             return Task.CompletedTask;
         }
 
@@ -175,6 +186,8 @@ namespace GarçomDoKitts
         public DiscordMessage fraseDoDia; // qual a frase que foi escolhida para o dia.
         bool fraseDoDiaEnviada = false;
         DateTime diaUltimoEnvio;        
+        
+        public DateTime DiaDoUltimoEnvio => diaUltimoEnvio;
 
         public void Init()
         {
@@ -251,12 +264,14 @@ namespace GarçomDoKitts
             Console.WriteLine("(FraseDoDia) Mensagem construída");
             Console.WriteLine("(FraseDoDia) Iniciando envio da mensagem pelo client");
 
+            await canalParaReenviar.SendMessageAsync($"Estarei servindo a frase diária aos senhores...");
             await canalParaReenviar.SendMessageAsync(embed);
+            await canalParaReenviar.SendMessageAsync($"Aqui está!");
 
             Console.WriteLine("(FraseDoDia) Mensagem enviada pelo client");
             Console.WriteLine($"(FraseDoDia) Enviada frase '{fraseDoDia.Content}' de {fraseDoDia.Author.Username}, criada em {fraseDoDia.CreationTimestamp}");
         }
-
+            
         // Serve para escolher a frase do dia
         public async Task Choose()
         {
