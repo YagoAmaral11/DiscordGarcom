@@ -30,8 +30,7 @@ namespace GarçomDoKitts
 
             await context.Channel.SendMessageAsync("Servindo a frase diária novamente, em um instante...");
             await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.dailyFrase.DiaDoUltimoEnvio}");
-            await Program.dailyFrase.Send();
-            await Program.client.SendMessageAsync(context.Channel, $"Aqui está!");
+            await Program.dailyFrase.Send();            
 
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase enviada");
         }

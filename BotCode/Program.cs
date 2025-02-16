@@ -241,7 +241,11 @@ namespace GarçomDoKitts
             Console.WriteLine("(FraseDoDia) Fim da escolha de frase");
 
             Console.WriteLine("(FraseDoDia) Inicio de envio");
+
+            await canalParaReenviar.SendMessageAsync($"Estarei servindo a frase diária aos senhores...");
             await Send();
+            await canalParaReenviar.SendMessageAsync($"Aqui está!");
+
             Console.WriteLine("(FraseDoDia) Fim de envio");
         }
 
@@ -264,9 +268,8 @@ namespace GarçomDoKitts
             Console.WriteLine("(FraseDoDia) Mensagem construída");
             Console.WriteLine("(FraseDoDia) Iniciando envio da mensagem pelo client");
 
-            await canalParaReenviar.SendMessageAsync($"Estarei servindo a frase diária aos senhores...");
-            await canalParaReenviar.SendMessageAsync(embed);
-            await canalParaReenviar.SendMessageAsync($"Aqui está!");
+            
+            await canalParaReenviar.SendMessageAsync(embed);            
 
             Console.WriteLine("(FraseDoDia) Mensagem enviada pelo client");
             Console.WriteLine($"(FraseDoDia) Enviada frase '{fraseDoDia.Content}' de {fraseDoDia.Author.Username}, criada em {fraseDoDia.CreationTimestamp}");
