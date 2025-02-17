@@ -28,18 +28,20 @@ namespace GarçomDoKitts
 
         private static async Task Main(string[] args)
         {
-            if (!File.Exists(ConfigIO.TokenPath))
+            if (!File.Exists(DataIO.TokenPath))
             {
-                Console.WriteLine($"(Program) {ConfigIO.TokenPath} não encontrado. Verificar se o arquivo existe e está com o nome correto");
+                Console.WriteLine($"(Program) {DataIO.TokenPath} não encontrado. Verificar se o arquivo existe e está com o nome correto");
+                Console.WriteLine($"(Program) Finalizando programa. Sem token é impossível continuar");
+                Environment.Exit(-1);
             }
 
-            if (!File.Exists(ConfigIO.ConfigPath))
+            if (!File.Exists(DataIO.ConfigPath))
             {
-                Console.WriteLine($"(Program) {ConfigIO.ConfigPath} não encontrado. Verificar se o arquivo existe e está com o nome correto");
+                Console.WriteLine($"(Program) {DataIO.ConfigPath} não encontrado. Verificar se o arquivo existe e está com o nome correto");
                 ConfigReset();
             }
 
-            await ConfigIO.LoadConfig(); // Carrega configs
+            await DataIO.LoadConfig(); // Carrega configs
             await InitDiscordConfig(); // Inicia o client do Discord para o bot            
             await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
             await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
@@ -51,14 +53,14 @@ namespace GarçomDoKitts
         {
             Console.WriteLine("(ConfigReset) Criando um novo arquivo de configuração em branco");
             ConfigJSON json = new ConfigJSON();
-            await ConfigIO.Write($"{ConfigIO.ConfigPath}", json);
+            await DataIO.Write($"{DataIO.ConfigPath}", json);
         }
 
         public async static void ConfigTemplate()
         {
             Console.WriteLine("(ConfigReset) Criando um novo arquivo de configuração de template");
             ConfigJSON json = new ConfigJSON();
-            await ConfigIO.Write($"template-{ConfigIO.ConfigPath}", json);
+            await DataIO.Write($"template-{DataIO.ConfigPath}", json);
         }
 
         private static Task InitDiscordConfig()
@@ -123,6 +125,20 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }
 
+        private static void Program_Closing(object sender, EventArgs e)
+        {
+            Console.WriteLine("(Program) Bot finalizando");
+            Console.WriteLine("(Program) Gravando módulos");
+
+            if (dailyFrase != null)
+            {
+                dailyFrase.SaveInstance();
+            }            
+
+            Console.WriteLine("(Program) Módulos gravados");
+            Console.WriteLine("(Program) Bot finalizado");
+        }
+
         public static Task InitModules()
         {
             Console.WriteLine("(Program) Inicializando módulos");
@@ -135,6 +151,7 @@ namespace GarçomDoKitts
             Console.WriteLine("(Program) Inicializando Eventos");
             client.MessageCreated += Client_MessageCreated;
             client.MessageDeleted += Client_MessageDeleted;
+            AppDomain.CurrentDomain.ProcessExit += Program_Closing;
 
             // Timer Principal
             Console.WriteLine("(Program) Inicializando timer principal");
@@ -151,7 +168,7 @@ namespace GarçomDoKitts
             logTimer.Elapsed += LogLoop;
 
             return Task.CompletedTask;
-        }
+        }        
 
         private static void Loop(object sender, ElapsedEventArgs e)
         {
@@ -174,7 +191,9 @@ namespace GarçomDoKitts
     }
 
     public class FraseDoDia
-    {        
+    {
+        public static readonly string DataPath = $"{DataIO.DataFolderPath}fraseDoDia.json";
+
         int fraseDoDiaEnvioHora;
         int fraseDoDiaEnvioMins;
         public int quantiaDeFrases; // quantas frases tem no canal de frases
@@ -193,16 +212,34 @@ namespace GarçomDoKitts
         {
             Console.WriteLine("(FraseDoDia) Inicializando");
 
+            FraseDoDia tmpLoad = new FraseDoDia();
+
             fraseDoDiaEnviada = false;
             fraseDoDiaEnvioHora = Program.config.FraseDiaria_HoraDeEnvio;
             fraseDoDiaEnvioMins = Program.config.FraseDiaria_MinsDeEnvio;
-            
-            quantiaDeFrases = Program.config.FraseDiaria_total;
+
+            quantiaDeFrases = Program.config.FraseDiaria_totalInicial;
 
             canalDeFrases = Program.client.GetChannelAsync(Program.config.FraseDiaria_CanalFetchID).Result;
             canalParaReenviar = Program.client.GetChannelAsync(Program.config.FraseDiaria_CanalEnvioID).Result;
 
             random = new Random();
+
+            if (File.Exists(DataPath))
+            {
+                Console.WriteLine("(FraseDoDia) Dados salvos encontrados");
+
+                tmpLoad = DataIO.Load(DataPath, typeof(FraseDoDia)).Result as FraseDoDia;
+
+                Console.WriteLine("(FraseDoDia) Carregando dados salvos");
+
+                fraseDoDiaEnviada = tmpLoad.fraseDoDiaEnviada;
+                quantiaDeFrases = tmpLoad.quantiaDeFrases;
+                diaUltimoEnvio = tmpLoad.DiaDoUltimoEnvio;
+                fraseDoDia = tmpLoad.fraseDoDia;                
+
+                Console.WriteLine("(FraseDoDia) Dados sobreescrevidos");
+            }           
 
             Console.WriteLine("(FraseDoDia) Fim da inicialização");
         }
@@ -330,6 +367,14 @@ namespace GarçomDoKitts
                 quantiaDeFrases++;
             }
         }
+
+        public async Task SaveInstance()
+        {
+            Console.WriteLine("(FraseDoDia) Inicializando gravação dos dados");
+            await DataIO.Write(DataPath, typeof(FraseDoDia));
+            Console.WriteLine("(FraseDoDia) Dados gravados");
+        }
+
     }
 
 }

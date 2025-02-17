@@ -9,11 +9,11 @@ using System.Threading.Tasks;
 
 namespace GarçomDoKitts.configs
 {
-    public static class ConfigIO
+    public static class DataIO
     {
-        public static readonly string TokenPath = "token.json";
-        public static readonly string ConfigPath = "config.json";
-        public static readonly string DataPath = "data.json";
+        public static readonly string DataFolderPath = "data/";        
+        public static readonly string TokenPath = $"{DataFolderPath}token.json";
+        public static readonly string ConfigPath = $"{DataFolderPath}config.json";              
 
         public static async Task LoadConfig()
         {
@@ -91,7 +91,7 @@ namespace GarçomDoKitts.configs
         // Quantas frases existem no canal de frases; Usar a pesquisa do discord para descobrir; É usado quando o bot é iniciado pela primeiro vez;
         // Esse valor é atualizado e guardado dentro do modulo de frase diária quando mensagens são excluidas e adicionadas no frases, mas somente quando o bot está online
         // Logo, é importante que, no futuro, o bot guarde esse valor (junto com todas as instâncias de módulos) em um local separado, para que ele seja carregado.
-        public int FraseDiaria_total { get; set; } 
+        public int FraseDiaria_totalInicial { get; set; } 
         public ulong FraseDiaria_CanalFetchID { get; set; } // O ID do canal de frases (de onde elas devem ser puxadas)
         public ulong FraseDiaria_CanalEnvioID { get; set; } // O ID do canal de frases para envio das frases
 
@@ -108,7 +108,7 @@ namespace GarçomDoKitts.configs
 
             FraseDiaria_HoraDeEnvio = 12;
             FraseDiaria_MinsDeEnvio = 0;
-            FraseDiaria_total = 1168; // 07/02/2025 18:50
+            FraseDiaria_totalInicial = 1181; // 16/02/2025 23:24
             FraseDiaria_CanalFetchID = 935704934144434196;
             FraseDiaria_CanalEnvioID = 832773492738490452;
         }
