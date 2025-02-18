@@ -24,7 +24,8 @@ namespace GarçomDoKitts
         public static Timer mainTimer;
         public static Timer logTimer;
 
-        public static FraseDoDia dailyFrase = new FraseDoDia();
+        public static Frases modulo_Frases = new();      
+        public static Backuper modulo_Backuper = new();
 
         private static async Task Main(string[] args)
         {
@@ -45,22 +46,29 @@ namespace GarçomDoKitts
             await InitDiscordConfig(); // Inicia o client do Discord para o bot            
             await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
             await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
-            await InitModules();
+            await InitModules(); // Inicializa os módulos (Carrega informações, etc.)
+
             await Task.Delay(-1);
         }
 
         public async static void ConfigReset()
         {
             Console.WriteLine("(ConfigReset) Criando um novo arquivo de configuração em branco");
+
             ConfigJSON json = new ConfigJSON();
             await DataIO.Write($"{DataIO.ConfigPath}", json);
+
+            Console.WriteLine("(ConfigReset) Arquivo de configuração criado");
         }
 
         public async static void ConfigTemplate()
         {
             Console.WriteLine("(ConfigReset) Criando um novo arquivo de configuração de template");
+
             ConfigJSON json = new ConfigJSON();
             await DataIO.Write($"template-{DataIO.ConfigPath}", json);
+
+            Console.WriteLine("(ConfigReset) Arquivo de template criado");
         }
 
         private static Task InitDiscordConfig()
@@ -112,7 +120,8 @@ namespace GarçomDoKitts
         private static Task Client_MessageDeleted(DiscordClient sender, DSharpPlus.EventArgs.MessageDeleteEventArgs args)
         {
             Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem deletada");
-            dailyFrase.FrasePossivelmenteDeletada(sender, args);
+
+            modulo_Frases.FrasePossivelmenteDeletada(sender, args);
 
             return Task.CompletedTask;
         }
@@ -120,7 +129,8 @@ namespace GarçomDoKitts
         private static Task Client_MessageCreated(DiscordClient sender, DSharpPlus.EventArgs.MessageCreateEventArgs args)
         {
             Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem criada");
-            dailyFrase.FrasePossivelmenteCriada(sender, args);
+
+            modulo_Frases.FrasePossivelmenteCriada(sender, args);
 
             return Task.CompletedTask;
         }
@@ -128,14 +138,9 @@ namespace GarçomDoKitts
         private static void Program_Closing(object sender, EventArgs e)
         {
             Console.WriteLine("(Program) Bot finalizando");
-            Console.WriteLine("(Program) Gravando módulos");
-
-            if (dailyFrase != null)
-            {
-                dailyFrase.SaveInstance();
-            }            
-
-            Console.WriteLine("(Program) Módulos gravados");
+            
+            SaveModules();
+            
             Console.WriteLine("(Program) Bot finalizado");
         }
 
@@ -143,9 +148,9 @@ namespace GarçomDoKitts
         {
             Console.WriteLine("(Program) Inicializando módulos");
 
-            // Módulos
-            Console.WriteLine("(Program) Inicializando Frase do Dia");
-            dailyFrase.Init();
+            // Módulos            
+            modulo_Frases.Init();
+            modulo_Backuper.Init();
 
             // Eventos
             Console.WriteLine("(Program) Inicializando Eventos");
@@ -170,14 +175,26 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }        
 
+        public static Task SaveModules()
+        {
+            // Verificar se é nulo antes, pois esse método pode ser chamado antes da inicialização
+            Console.WriteLine("(Program) Gravando módulos");
+
+            modulo_Frases?.SaveInstance();
+
+            Console.WriteLine("(Program) Módulos gravados");
+            return Task.CompletedTask;
+        }
+
         private static void Loop(object sender, ElapsedEventArgs e)
         {
             if (config.Log_Ticks)
             {
-                Console.WriteLine($"(Program) Bot Ticking in {DateTime.Now}");                
+                Console.WriteLine($"(Program) Bot Ticking in {GetTime()}");                
             }
 
-            dailyFrase.Loop();
+            modulo_Frases.Loop();
+            modulo_Backuper.Loop();
         }
 
         private static void LogLoop(object sender, ElapsedEventArgs e)
@@ -185,196 +202,10 @@ namespace GarçomDoKitts
             if (!config.Log_LogTicks)
                 return;
 
-            Console.WriteLine($"(Program) Bot log ticking in {DateTime.Now}");
+            Console.WriteLine($"(Program) Bot log ticking in {GetTime()}");
         }
 
-    }
+        public static DateTime GetTime() => TimeZoneInfo.ConvertTimeToUtc(DateTime.Now, config.Program_UTC);
 
-    public class FraseDoDia
-    {
-        public static readonly string DataPath = $"{DataIO.DataFolderPath}fraseDoDia.json";
-
-        int fraseDoDiaEnvioHora;
-        int fraseDoDiaEnvioMins;
-        public int quantiaDeFrases; // quantas frases tem no canal de frases
-        
-        public DiscordChannel canalDeFrases; // origem das frases
-        public DiscordChannel canalParaReenviar; // destino das frases        
-
-        public Random random;
-        public DiscordMessage fraseDoDia; // qual a frase que foi escolhida para o dia.
-        bool fraseDoDiaEnviada = false;
-        DateTime diaUltimoEnvio;        
-        
-        public DateTime DiaDoUltimoEnvio => diaUltimoEnvio;
-
-        public void Init()
-        {
-            Console.WriteLine("(FraseDoDia) Inicializando");
-
-            FraseDoDia tmpLoad = new FraseDoDia();
-
-            fraseDoDiaEnviada = false;
-            fraseDoDiaEnvioHora = Program.config.FraseDiaria_HoraDeEnvio;
-            fraseDoDiaEnvioMins = Program.config.FraseDiaria_MinsDeEnvio;
-
-            quantiaDeFrases = Program.config.FraseDiaria_totalInicial;
-
-            canalDeFrases = Program.client.GetChannelAsync(Program.config.FraseDiaria_CanalFetchID).Result;
-            canalParaReenviar = Program.client.GetChannelAsync(Program.config.FraseDiaria_CanalEnvioID).Result;
-
-            random = new Random();
-
-            if (File.Exists(DataPath))
-            {
-                Console.WriteLine("(FraseDoDia) Dados salvos encontrados");
-
-                tmpLoad = DataIO.Load(DataPath, typeof(FraseDoDia)).Result as FraseDoDia;
-
-                Console.WriteLine("(FraseDoDia) Carregando dados salvos");
-
-                fraseDoDiaEnviada = tmpLoad.fraseDoDiaEnviada;
-                quantiaDeFrases = tmpLoad.quantiaDeFrases;
-                diaUltimoEnvio = tmpLoad.DiaDoUltimoEnvio;
-                fraseDoDia = tmpLoad.fraseDoDia;                
-
-                Console.WriteLine("(FraseDoDia) Dados sobreescrevidos");
-            }           
-
-            Console.WriteLine("(FraseDoDia) Fim da inicialização");
-        }
-
-        public async Task Loop()
-        {            
-            if (!fraseDoDiaEnviada)
-            {
-                DateTime time = DateTime.Now;
-
-                if (time.Hour >= fraseDoDiaEnvioHora && time.Minute >= fraseDoDiaEnvioMins)
-                {
-                    // Deve enviar 
-
-                    fraseDoDiaEnviada = true;
-                    diaUltimoEnvio = time;
-
-                    await Daily();
-                }
-            }
-            else
-            {
-                // Verificar passagem do dia
-                if (DateTime.Now.Date.CompareTo(diaUltimoEnvio) > 0) 
-                {
-                    // É o próximo dia
-                    fraseDoDiaEnviada = false;   
-                }
-            }            
-        }
-
-        private async Task Daily()
-        {
-            Console.WriteLine("(FraseDoDia) Inicio de escolha de frase");
-            await Choose();
-            Console.WriteLine("(FraseDoDia) Fim da escolha de frase");
-
-            Console.WriteLine("(FraseDoDia) Inicio de envio");
-
-            await canalParaReenviar.SendMessageAsync($"Estarei servindo a frase diária aos senhores...");
-            await Send();
-            await canalParaReenviar.SendMessageAsync($"Aqui está!");
-
-            Console.WriteLine("(FraseDoDia) Fim de envio");
-        }
-
-        // Serve para enviar a frase do dia
-        public async Task Send()
-        {
-            Console.WriteLine("(FraseDoDia) Construindo mensagem para envio");
-
-            DiscordEmbedBuilder embedBuilder = new DiscordEmbedBuilder();
-            embedBuilder.Title = "Frase do Dia";
-            embedBuilder.Color = new Optional<DiscordColor>(new DiscordColor("d619bd"));
-            embedBuilder.Footer = new DiscordEmbedBuilder.EmbedFooter();
-            embedBuilder.Footer.Text = $"Frase cunhada por {fraseDoDia.Author.Username}";
-            embedBuilder.Footer.IconUrl = fraseDoDia.Author.AvatarUrl;
-            embedBuilder.Timestamp = fraseDoDia.CreationTimestamp;
-            embedBuilder.Description = fraseDoDia.Content;            
-
-            DiscordEmbed embed = embedBuilder.Build();
-
-            Console.WriteLine("(FraseDoDia) Mensagem construída");
-            Console.WriteLine("(FraseDoDia) Iniciando envio da mensagem pelo client");
-
-            
-            await canalParaReenviar.SendMessageAsync(embed);            
-
-            Console.WriteLine("(FraseDoDia) Mensagem enviada pelo client");
-            Console.WriteLine($"(FraseDoDia) Enviada frase '{fraseDoDia.Content}' de {fraseDoDia.Author.Username}, criada em {fraseDoDia.CreationTimestamp}");
-        }
-            
-        // Serve para escolher a frase do dia
-        public async Task Choose()
-        {
-            Console.WriteLine($"(FraseDoDia) Escolhendo um número aleatório para a frase do dia");
-
-            int indexDaFrase = random.Next(0, quantiaDeFrases);
-
-            Console.WriteLine($"(FraseDoDia) Procurando pela frase de índice {indexDaFrase}");
-
-            if (indexDaFrase < 100)
-            {
-                // Frase é uma das 100 primeiras
-                var frases = await canalDeFrases.GetMessagesAsync(100);
-                fraseDoDia = frases[indexDaFrase];
-            }
-            else
-            {                
-                // Frase é depois das 100 primeiras
-
-                IReadOnlyList<DiscordMessage> frases = null;
-                // pega a primeira mensagem para servir de base
-                var primeirasMsgs = await canalDeFrases.GetMessagesAsync(100); 
-                DiscordMessage msgPivot = primeirasMsgs[99];
-                int currentIndex = indexDaFrase; // usado para pegar a mensagens anteriores
-
-                // "Procura" a mensagem do índice passado, até puxar as mensagens dentro desse índice
-                while (currentIndex > 99)
-                {                    
-                    await Task.Delay(300);
-                    frases = await canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100);
-                    currentIndex -= 100;
-                    msgPivot = frases[99];                    
-                }
-
-                fraseDoDia = frases[currentIndex];
-            }
-
-            Console.WriteLine($"(FraseDoDia) Frase do dia escolhida: {fraseDoDia.Content} escrita por {fraseDoDia.Author.Username}");
-        }
-
-        public void FrasePossivelmenteDeletada(DiscordClient sender, DSharpPlus.EventArgs.MessageDeleteEventArgs args)
-        {
-            if (args.Channel == canalDeFrases)
-            {
-                quantiaDeFrases--;
-            }
-        }
-
-        public void FrasePossivelmenteCriada(DiscordClient sender, DSharpPlus.EventArgs.MessageCreateEventArgs args)
-        {
-            if (args.Channel == canalDeFrases)
-            {
-                quantiaDeFrases++;
-            }
-        }
-
-        public async Task SaveInstance()
-        {
-            Console.WriteLine("(FraseDoDia) Inicializando gravação dos dados");
-            await DataIO.Write(DataPath, typeof(FraseDoDia));
-            Console.WriteLine("(FraseDoDia) Dados gravados");
-        }
-
-    }
-
+    }           
 }

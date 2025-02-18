@@ -1,5 +1,6 @@
 ﻿using DSharpPlus.CommandsNext;
 using DSharpPlus.CommandsNext.Attributes;
+using DSharpPlus.CommandsNext.Executors;
 using DSharpPlus;
 using System;
 using System.Collections.Generic;
@@ -14,11 +15,12 @@ namespace GarçomDoKitts
     {
 
         [Command("FraseDiaria")]
-        public async Task FraseDoDia_mostrarFrase(CommandContext context)
+        [Aliases("FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase")]
+        public async Task Frases_mostrarFrase(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mostrando a frase diária, pedido por: {context.User.Username} ({context.User.Id})");
 
-            if (Program.dailyFrase.fraseDoDia == null)
+            if (Program.modulo_Frases.fraseDoDia == null)
             {
                 Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase do Dia é nula, impossível mandar frase");
                 await Program.client.SendMessageAsync(context.Channel, "Não existe frase disponível");
@@ -28,20 +30,21 @@ namespace GarçomDoKitts
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mandando a frase do dia");
 
             await context.Channel.SendMessageAsync("Servindo a frase diária novamente, em um instante...");
-            await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.dailyFrase.DiaDoUltimoEnvio}");
-            await Program.dailyFrase.Send();            
+            await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.modulo_Frases.DiaDoUltimoEnvio}");
+            await Program.modulo_Frases.Send();            
 
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase enviada");
         }
 
         [Command("FraseAleatoria")]
-        public async Task FraseDoDia_fraseAleatoria(CommandContext context)
+        [Aliases("FraseRandom", "RandomFrase", "FraseAleatória")]
+        public async Task Frases_fraseAleatoria(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Mostrando uma frase aleatória, pedido por: {context.User.Username} ({context.User.Id})");
 
             await Program.client.SendMessageAsync(context.Channel, $"Pegando uma frase do \"cardápio\", um momento...");
 
-            int index = Program.dailyFrase.random.Next(0, Program.dailyFrase.quantiaDeFrases);
+            int index = Program.modulo_Frases.random.Next(0, Program.modulo_Frases.quantiaDeFrases);
 
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Procurando pela frase de índice {index}");
 
@@ -49,14 +52,14 @@ namespace GarçomDoKitts
 
             if (index < 100)
             {
-                var frases = await Program.dailyFrase.canalDeFrases.GetMessagesAsync(100);
+                var frases = await Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100);
                 frase = frases[index];
             }
             else
             {
                 IReadOnlyList<DiscordMessage> frases = null;
                 // pega a primeira mensagem para servir de base
-                var primeirasMsgs = await Program.dailyFrase.canalDeFrases.GetMessagesAsync(100);
+                var primeirasMsgs = await Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100);
                 DiscordMessage msgPivot = primeirasMsgs[99];
                 int currentIndex = index; // usado para pegar a mensagens anteriores
 
@@ -64,7 +67,7 @@ namespace GarçomDoKitts
                 while (currentIndex > 99)
                 {
                     await Task.Delay(300);
-                    frases = await Program.dailyFrase.canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100);
+                    frases = await Program.modulo_Frases.canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100);
                     currentIndex -= 100;
                     msgPivot = frases[99];
                 }
