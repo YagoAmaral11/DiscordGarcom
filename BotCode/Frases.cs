@@ -27,33 +27,30 @@ namespace GarçomDoKitts
         // Runtime data
         public DiscordMessage fraseDoDia; // qual a frase que foi escolhida para o dia.
         public int quantiaDeFrases; // quantas frases tem no canal de frases
-        bool fraseDoDiaEnviada = false;
-        DateTime diaUltimoEnvio;
+        public bool fraseDoDiaEnviada;
+        public DateTime diaUltimoEnvio;        
 
-        public DateTime DiaDoUltimoEnvio => diaUltimoEnvio;
-
-        public void Init()
+        public async Task Init()
         {
             Console.WriteLine("(Frases) Inicializando");
 
             Frases tmpLoad = new Frases();
+
+            canalDeFrases = Program.client.GetChannelAsync(Program.config.Frases_CanalFetchID).Result;
+            canalParaReenviar = Program.client.GetChannelAsync(Program.config.Frases_CanalEnvioID).Result;
+            random = new Random();
 
             fraseDoDiaEnviada = false;
 
             if (Program.config.Frases_totalInicial < 0)
             {
                 Console.WriteLine("(Frases) Fetching de mensagens acionado");
-                Fetch();
+                await Fetch();
             }
             else
             {
                 quantiaDeFrases = Program.config.Frases_totalInicial;
-            }
-
-            canalDeFrases = Program.client.GetChannelAsync(Program.config.Frases_CanalFetchID).Result;
-            canalParaReenviar = Program.client.GetChannelAsync(Program.config.Frases_CanalEnvioID).Result;
-
-            random = new Random();
+            }            
 
             if (File.Exists(DataPath))
             {
@@ -66,7 +63,7 @@ namespace GarçomDoKitts
                 fraseDoDia = tmpLoad.fraseDoDia;
                 quantiaDeFrases = tmpLoad.quantiaDeFrases;
                 fraseDoDiaEnviada = tmpLoad.fraseDoDiaEnviada;
-                diaUltimoEnvio = tmpLoad.DiaDoUltimoEnvio;
+                diaUltimoEnvio = tmpLoad.diaUltimoEnvio;
 
                 Console.WriteLine("(Frases) Dados sobreescrevidos");
             }
@@ -204,22 +201,38 @@ namespace GarçomDoKitts
             int quantia = 0;
             bool cont = true;
 
-            IReadOnlyList<DiscordMessage> frases;
+            IReadOnlyList<DiscordMessage> frases = await canalDeFrases.GetMessagesAsync(100);
+            DiscordMessage anchor = frases[0];
+
+            quantia += frases.Count;
+            if (frases.Count < 100)
+            {                
+                cont = false;
+            }
+            else
+            {                
+                anchor = frases[99];
+                cont = true;
+            }
 
             while (cont)
-            {
-                frases = await canalDeFrases.GetMessagesAsync(100);
-                quantia += frases.Count;
+            {                
+                frases = await canalDeFrases.GetMessagesBeforeAsync(anchor.Id, 100);
+                quantia += frases.Count;                
 
                 if (frases.Count < 100)
                 {
                     cont = false;
                 }
+                else
+                {
+                    anchor = frases[99];
+                }                
 
-                await Task.Delay(300);
+                await Task.Delay(500);                
             }
 
-            quantiaDeFrases = quantia;
+            quantiaDeFrases = quantia;            
 
             Console.WriteLine("(Frases) Fetch finalizado");
         }

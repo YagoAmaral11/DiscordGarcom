@@ -144,19 +144,19 @@ namespace GarçomDoKitts
             Console.WriteLine("(Program) Bot finalizado");
         }
 
-        public static Task InitModules()
+        public async static Task InitModules()
         {
             Console.WriteLine("(Program) Inicializando módulos");
 
             // Módulos            
-            modulo_Frases.Init();
+            await modulo_Frases.Init();
             modulo_Backuper.Init();
 
             // Eventos
             Console.WriteLine("(Program) Inicializando Eventos");
             client.MessageCreated += Client_MessageCreated;
             client.MessageDeleted += Client_MessageDeleted;
-            AppDomain.CurrentDomain.ProcessExit += Program_Closing;
+            AppDomain.CurrentDomain.ProcessExit += Program_Closing;            
 
             // Timer Principal
             Console.WriteLine("(Program) Inicializando timer principal");
@@ -172,7 +172,7 @@ namespace GarçomDoKitts
             logTimer.Enabled = true;
             logTimer.Elapsed += LogLoop;
 
-            return Task.CompletedTask;
+            return;
         }        
 
         public static Task SaveModules()
@@ -205,7 +205,7 @@ namespace GarçomDoKitts
             Console.WriteLine($"(Program) Bot log ticking in {GetTime()}");
         }
 
-        public static DateTime GetTime() => TimeZoneInfo.ConvertTimeToUtc(DateTime.Now, config.Program_UTC);
+        public static DateTime GetTime() => TimeZoneInfo.ConvertTime(DateTime.UtcNow, config.Program_UTC);
 
     }           
 }
