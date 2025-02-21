@@ -30,7 +30,7 @@ namespace GarçomDoKitts
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mandando a frase do dia");
 
             await context.Channel.SendMessageAsync("Servindo a frase diária novamente, em um instante...");
-            await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.modulo_Frases.diaUltimoEnvio}");
+            await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.modulo_Frases.diaUltimoEnvio.ToString(Program.config.Program_LocalCulture)}");
             await Program.modulo_Frases.Send();            
 
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase enviada");
@@ -98,6 +98,19 @@ namespace GarçomDoKitts
 
             Console.WriteLine("(Command.FraseDoDia_fraseAleatoria) Mensagem enviada pelo client");
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Frase enviada");
+        }
+
+        [Command("PersonalizadaRapida")]
+        [Aliases("PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
+        public async Task Jogos_PersoFast(CommandContext context)
+        {
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message);
+        }
+
+        [Command("PersonalizadaRapida")]        
+        public async Task Jogos_PersoFast(CommandContext context, uint max)
+        {
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max);
         }
 
     }

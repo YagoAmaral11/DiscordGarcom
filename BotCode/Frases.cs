@@ -8,27 +8,29 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Timers;
+using Newtonsoft.Json;
 
 namespace GarçomDoKitts
 {
     public class Frases
     {
-        public static readonly string DataPath = $"{DataIO.DataFolderPath}frases.json";
+        [JsonIgnore] public static readonly string DataPath = $"{DataIO.DataFolderPath}frases.json";
 
         // Configs
-        public static int FraseDoDiaEnvioHora => Program.config.Frases_HoraDeEnvio;
-        public static int FraseDoDiaEnvioMins => Program.config.Frases_MinsDeEnvio;
+        [JsonIgnore] public static int FraseDoDiaEnvioHora => Program.config.Frases_HoraDeEnvio;
+        [JsonIgnore] public static int FraseDoDiaEnvioMins => Program.config.Frases_MinsDeEnvio;
 
         // Classes
-        public Random random;
-        public DiscordChannel canalDeFrases; // origem das frases
-        public DiscordChannel canalParaReenviar; // destino das frases        
+        [JsonIgnore] public Random random;
+        [JsonIgnore] public DiscordChannel canalDeFrases; // origem das frases
+        [JsonIgnore] public DiscordChannel canalParaReenviar; // destino das frases        
+        [JsonIgnore] public DiscordMessage fraseDoDia; // qual a frase que foi escolhida para o dia.
 
         // Runtime data
-        public DiscordMessage fraseDoDia; // qual a frase que foi escolhida para o dia.
+        public ulong fraseDoDiaID;
         public int quantiaDeFrases; // quantas frases tem no canal de frases
         public bool fraseDoDiaEnviada;
-        public DateTime diaUltimoEnvio;        
+        public DateTime diaUltimoEnvio;               
 
         public async Task Init()
         {
@@ -60,10 +62,12 @@ namespace GarçomDoKitts
 
                 Console.WriteLine("(Frases) Carregando dados salvos");
 
-                fraseDoDia = tmpLoad.fraseDoDia;
+                fraseDoDiaID = tmpLoad.fraseDoDiaID;                
                 quantiaDeFrases = tmpLoad.quantiaDeFrases;
                 fraseDoDiaEnviada = tmpLoad.fraseDoDiaEnviada;
                 diaUltimoEnvio = tmpLoad.diaUltimoEnvio;
+
+                fraseDoDia = await canalDeFrases.GetMessageAsync(fraseDoDiaID);
 
                 Console.WriteLine("(Frases) Dados sobreescrevidos");
             }
@@ -105,6 +109,11 @@ namespace GarçomDoKitts
         public async Task SaveInstance()
         {
             Console.WriteLine("(Frases) Inicializando gravação dos dados");
+
+            if (fraseDoDia != null)
+            {
+                fraseDoDiaID = fraseDoDia.Id;
+            }            
 
             await DataIO.Write(DataPath, this);
 

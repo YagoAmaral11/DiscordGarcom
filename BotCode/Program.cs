@@ -4,6 +4,7 @@ using DSharpPlus.Entities;
 using GarçomDoKitts.configs;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using System.Timers;
@@ -26,6 +27,7 @@ namespace GarçomDoKitts
 
         public static Frases modulo_Frases = new();      
         public static Backuper modulo_Backuper = new();
+        public static Jogos modulo_Jogos = new();
 
         private static async Task Main(string[] args)
         {
@@ -150,6 +152,7 @@ namespace GarçomDoKitts
 
             // Módulos            
             await modulo_Frases.Init();
+            await modulo_Jogos.Init();
             modulo_Backuper.Init();
 
             // Eventos
@@ -206,6 +209,7 @@ namespace GarçomDoKitts
         }
 
         public static DateTime GetTime() => TimeZoneInfo.ConvertTime(DateTime.UtcNow, config.Program_UTC);
+        public static string PrintTime() => GetTime().ToString(config.Program_LocalCulture);
 
     }           
 }

@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -46,7 +47,7 @@ namespace GarçomDoKitts.configs
         }
 
         public static async Task Write(string location, object toWrite)
-        {
+        {            
             string json = JsonConvert.SerializeObject(toWrite, Formatting.Indented);
 
             using (StreamWriter sw = new StreamWriter(location))
@@ -80,6 +81,7 @@ namespace GarçomDoKitts.configs
 
         // Geral
         public TimeZoneInfo Program_UTC { get; set; }
+        public CultureInfo Program_LocalCulture { get; set; }
 
         // logs
         public bool Log_Ticks { get; set; } // Se os ticks principais do bot devem ser logados
@@ -107,6 +109,7 @@ namespace GarçomDoKitts.configs
             Prefix = "Garçom, ";
 
             Program_UTC = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); // Pega o horário de Brasília
+            Program_LocalCulture = new CultureInfo("pt-BR"); // Usado para mostrar o tempo certo
 
             Log_Ticks = false;   
             Log_LogTicks = true;
