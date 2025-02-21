@@ -46,8 +46,11 @@ namespace GarçomDoKitts
 
             if (Program.config.Frases_totalInicial < 0)
             {
-                Console.WriteLine("(Frases) Fetching de mensagens acionado");
-                await Fetch();
+                if (!File.Exists(DataPath))
+                {
+                    Console.WriteLine("(Frases) Fetching de mensagens acionado");
+                    await Fetch();
+                }
             }
             else
             {

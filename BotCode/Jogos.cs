@@ -1,5 +1,7 @@
 ﻿using DSharpPlus.CommandsNext;
 using DSharpPlus.Entities;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,7 +27,7 @@ namespace GarçomDoKitts
 
             DiscordVoiceState voiceState = member.VoiceState; // Serve para ver em qual canal da call está o usuário.
 
-            if (voiceState.Channel == null)
+            if (voiceState == null)
             {
                 await Program.client.SendMessageAsync(originalMessage.Channel, "Para usar esse comando você deve estar conectado em um canal de voz");
                 return;
@@ -33,13 +35,13 @@ namespace GarçomDoKitts
 
             if (voiceState.Channel.Users.Count < 3)
             {
-                await Program.client.SendMessageAsync(originalMessage.Channel, "Devem ter mais de usuários na call para usar esse comando");
+                await Program.client.SendMessageAsync(originalMessage.Channel, "Devem ter mais de 2 usuários na call para usar esse comando");
                 return;
             }
 
             DiscordMessageBuilder messageBuilder = new DiscordMessageBuilder();
             messageBuilder.WithReply(originalMessage.Id, true);
-            messageBuilder.WithContent("Iniciando sorteio dos times");
+            messageBuilder.WithContent("Sorteando times...");
             await messageBuilder.SendAsync(originalMessage.Channel);            
 
             List<DiscordMember> jogadores = new(voiceState.Channel.Users);            
@@ -62,14 +64,14 @@ namespace GarçomDoKitts
             // Se sobrar algum jogador ainda, jogar para a sobra/outra.
             for (int i = 0; i < jogadoresPorTime; i++)
             {
-                int index = sorteador.Next(0, jogadores.Count - 1);
+                int index = sorteador.Next(0, jogadores.Count);
                 timeA.Add(jogadores[index]);
                 jogadores.Remove(jogadores[index]);
             }            
 
             for (int i = 0; i < jogadoresPorTime; i++)
             {
-                int index = sorteador.Next(0, jogadores.Count - 1);
+                int index = sorteador.Next(0, jogadores.Count);
                 timeB.Add(jogadores[index]);
                 jogadores.Remove(jogadores[index]);
             }
@@ -136,7 +138,36 @@ namespace GarçomDoKitts
             }
 
             await messageBuilder.SendAsync(originalMessage.Channel);
+            await originalMessage.Channel.SendMessageAsync("Voilà!");
         }
 
+        public async Task Valorant_SortearMapa(DiscordMessage originalMessage, bool OnlyOnRotation = true)
+        {            
+
+        }
+
+    }
+
+    public class ValorantMapa
+    {
+        public string Name { get; set; }
+        public string ImageURL { get; set; }
+        public bool OnRotation { get; set; }
+    }
+
+    public class ValorantAgente
+    {
+        public string Name { get; set; }
+        public string ImageURL { get; set; }
+        public ValorantRole Role { get; set; }  
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum ValorantRole
+    {
+        Duelista,
+        Iniciador,
+        Controlador,
+        Sentinela
     }
 }
