@@ -15,7 +15,8 @@ namespace GarçomDoKitts.configs
     {
         public static readonly string DataFolderPath = "data/";        
         public static readonly string TokenPath = $"{DataFolderPath}token.json";
-        public static readonly string ConfigPath = $"{DataFolderPath}config.json";              
+        public static readonly string ConfigPath = $"{DataFolderPath}config.json";
+        public static readonly string TaskDonePath = $"{DataFolderPath}mensagens.json";
 
         public static async Task LoadConfig()
         {
@@ -82,6 +83,7 @@ namespace GarçomDoKitts.configs
         // Geral
         public TimeZoneInfo Program_UTC { get; set; }
         public CultureInfo Program_LocalCulture { get; set; }
+        public ulong Program_AdminID { get; set; }
 
         // logs
         public bool Log_Ticks { get; set; } // Se os ticks principais do bot devem ser logados
@@ -110,6 +112,7 @@ namespace GarçomDoKitts.configs
 
             Program_UTC = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); // Pega o horário de Brasília
             Program_LocalCulture = new CultureInfo("pt-BR"); // Usado para mostrar o tempo certo
+            Program_AdminID = 0; // ID do admin, que poderá desligar o bot, etc.
 
             Log_Ticks = false;   
             Log_LogTicks = true;
@@ -125,6 +128,17 @@ namespace GarçomDoKitts.configs
 
             Backuper_BackupIntervalMs = 30 * 60000; // A cada 30 minutos
         }
+    }    
+
+    public class TaskDone
+    {
+        public List<TaskDoneMsg> Msgs { get; set; }
+    }
+
+    public class TaskDoneMsg
+    {
+        public string Msg { get; set; }
+        public uint Weight { get; set; }
     }
 
 }

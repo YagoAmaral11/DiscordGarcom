@@ -1,10 +1,10 @@
 ﻿using DSharpPlus.CommandsNext;
 using DSharpPlus.Entities;
+using GarçomDoKitts.configs;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,12 +12,15 @@ namespace GarçomDoKitts
 {
     public class Jogos
     {
+        [JsonIgnore] public static readonly string dataPath = $"{DataIO.DataFolderPath}valorantMaps.json";
 
-        Random sorteador = new Random();
+        [JsonIgnore] Random sorteador = new Random();
+        [JsonIgnore] ValorantMapas Valorant_Mapas = new ValorantMapas();
 
         public async Task Init()
         {
             sorteador = new Random();
+            Valorant_Mapas = await DataIO.Load(dataPath, typeof(ValorantMapas)) as ValorantMapas;
         }        
 
         public string sortStringList(List<string> list) => list[sorteador.Next(0, list.Count - 1)];
@@ -138,14 +141,31 @@ namespace GarçomDoKitts
             }
 
             await messageBuilder.SendAsync(originalMessage.Channel);
-            await originalMessage.Channel.SendMessageAsync("Voilà!");
+            await originalMessage.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
         }
 
-        public async Task Valorant_SortearMapa(DiscordMessage originalMessage, bool OnlyOnRotation = true)
-        {            
-
+        public async Task<ValorantMapa> Valorant_SortearMapa(bool OnlyOnRotation = true)
+        {
+            while (true)
+            {
+                int random = sorteador.Next(0, Valorant_Mapas.Mapas.Count);
+                
+                if (OnlyOnRotation && Valorant_Mapas.Mapas[random].OnRotation)
+                {
+                    return Valorant_Mapas.Mapas[random];
+                }
+                else if (!OnlyOnRotation)
+                {
+                    return Valorant_Mapas.Mapas[random];
+                }                
+            }
         }
 
+    }
+
+    public class ValorantMapas
+    {
+        public List<ValorantMapa> Mapas { get; set; }
     }
 
     public class ValorantMapa
@@ -170,4 +190,5 @@ namespace GarçomDoKitts
         Controlador,
         Sentinela
     }
+
 }

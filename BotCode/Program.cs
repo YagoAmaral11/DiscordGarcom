@@ -15,6 +15,8 @@ namespace GarçomDoKitts
     {
         public static TokenJSON token;
         public static ConfigJSON config;
+        public static TaskDone taskDoneList = new();
+        public static readonly string taskDonePath = $"{DataIO.DataFolderPath}mensagens.json";
 
         public static DiscordClient client;
         public static CommandsNextExtension commands;
@@ -27,7 +29,8 @@ namespace GarçomDoKitts
 
         public static Frases modulo_Frases = new();      
         public static Backuper modulo_Backuper = new();
-        public static Jogos modulo_Jogos = new();
+        public static Jogos modulo_Jogos = new();        
+
 
         private static async Task Main(string[] args)
         {
@@ -53,6 +56,8 @@ namespace GarçomDoKitts
             await Task.Delay(-1);
         }
 
+
+        // IO
         public async static void ConfigReset()
         {
             Console.WriteLine("(ConfigReset) Criando um novo arquivo de configuração em branco");
@@ -73,6 +78,8 @@ namespace GarçomDoKitts
             Console.WriteLine("(ConfigReset) Arquivo de template criado");
         }
 
+
+        // Init
         private static Task InitDiscordConfig()
         {
             Console.WriteLine("(Program) Inicializando client e configurações do discord");
@@ -113,6 +120,43 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }
 
+        public async static Task InitModules()
+        {
+            Console.WriteLine("(Program) Inicializando módulos");
+
+            // Módulos            
+            await modulo_Frases.Init();
+            await modulo_Jogos.Init();
+            modulo_Backuper.Init();
+
+            // Eventos
+            Console.WriteLine("(Program) Inicializando Eventos");
+            client.MessageCreated += Client_MessageCreated;
+            client.MessageDeleted += Client_MessageDeleted;
+            AppDomain.CurrentDomain.ProcessExit += Program_Closing;
+
+            // Timer Principal
+            Console.WriteLine("(Program) Inicializando timer principal");
+            mainTimer = new Timer(config.Timers_TickTimerMs);
+            mainTimer.AutoReset = true;
+            mainTimer.Enabled = true;
+            mainTimer.Elapsed += Loop;
+
+            // Timer Secundário
+            Console.WriteLine("(Program) Inicializando timer secundário");
+            logTimer = new Timer(config.Timers_LogTimerMs);
+            logTimer.AutoReset = true;
+            logTimer.Enabled = true;
+            logTimer.Elapsed += LogLoop;
+
+            // Outros
+            taskDoneList = await DataIO.Load(DataIO.TaskDonePath, typeof(TaskDone)) as TaskDone;
+
+            return;
+        }
+
+
+        // Events
         private static Task Client_Ready(DiscordClient sender, DSharpPlus.EventArgs.ReadyEventArgs args)
         {
             Console.WriteLine("(DiscordClient) Client inicializado");            
@@ -137,7 +181,7 @@ namespace GarçomDoKitts
             return Task.CompletedTask;
         }
 
-        private static void Program_Closing(object sender, EventArgs e)
+        public static void Program_Closing(object sender, EventArgs e)
         {
             Console.WriteLine("(Program) Bot finalizando");
             
@@ -146,38 +190,8 @@ namespace GarçomDoKitts
             Console.WriteLine("(Program) Bot finalizado");
         }
 
-        public async static Task InitModules()
-        {
-            Console.WriteLine("(Program) Inicializando módulos");
 
-            // Módulos            
-            await modulo_Frases.Init();
-            await modulo_Jogos.Init();
-            modulo_Backuper.Init();
-
-            // Eventos
-            Console.WriteLine("(Program) Inicializando Eventos");
-            client.MessageCreated += Client_MessageCreated;
-            client.MessageDeleted += Client_MessageDeleted;
-            AppDomain.CurrentDomain.ProcessExit += Program_Closing;            
-
-            // Timer Principal
-            Console.WriteLine("(Program) Inicializando timer principal");
-            mainTimer = new Timer(config.Timers_TickTimerMs);
-            mainTimer.AutoReset = true;
-            mainTimer.Enabled = true;
-            mainTimer.Elapsed += Loop;
-
-            // Timer Secundário
-            Console.WriteLine("(Program) Inicializando timer secundário");
-            logTimer = new Timer(config.Timers_LogTimerMs);
-            logTimer.AutoReset = true;
-            logTimer.Enabled = true;
-            logTimer.Elapsed += LogLoop;
-
-            return;
-        }        
-
+        // Others
         public static Task SaveModules()
         {
             // Verificar se é nulo antes, pois esse método pode ser chamado antes da inicialização
@@ -188,7 +202,38 @@ namespace GarçomDoKitts
             Console.WriteLine("(Program) Módulos gravados");
             return Task.CompletedTask;
         }
+        
+        public static string GetTaskDoneMessage()
+        {
+            uint weightTotal = 0;
 
+            foreach (var msg in taskDoneList.Msgs)
+            {
+                weightTotal += msg.Weight;
+            }
+
+            Random random = new Random();
+            uint next = (uint) random.Next(0, (int) weightTotal + 1);
+            
+            for (int i = 0; i < weightTotal; i++)
+            {
+                var current = taskDoneList.Msgs[i];
+
+                if (next <= current.Weight)
+                {
+                    return taskDoneList.Msgs[i].Msg;
+                }
+                else
+                {
+                    next -= current.Weight;  
+                }
+            }
+
+            return taskDoneList.Msgs[0].Msg;
+        }
+
+
+        // Loop
         private static void Loop(object sender, ElapsedEventArgs e)
         {
             if (config.Log_Ticks)
@@ -208,6 +253,8 @@ namespace GarçomDoKitts
             Console.WriteLine($"(Program) Bot log ticking in {GetTime()}");
         }
 
+
+        // Time
         public static DateTime GetTime() => TimeZoneInfo.ConvertTime(DateTime.UtcNow, config.Program_UTC);
         public static string PrintTime() => GetTime().ToString(config.Program_LocalCulture);
 

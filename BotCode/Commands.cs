@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using DSharpPlus.Entities;
+using System.Drawing;
 
 namespace GarçomDoKitts
 {
@@ -31,7 +32,8 @@ namespace GarçomDoKitts
 
             await context.Channel.SendMessageAsync("Servindo a frase diária novamente, em um instante...");
             await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.modulo_Frases.diaUltimoEnvio.ToString(Program.config.Program_LocalCulture)}");
-            await Program.modulo_Frases.Send();            
+            await Program.modulo_Frases.Send();
+            await Program.client.SendMessageAsync(context.Channel, Program.GetTaskDoneMessage());
 
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase enviada");
         }
@@ -94,11 +96,13 @@ namespace GarçomDoKitts
             Console.WriteLine("(Command.FraseDoDia_fraseAleatoria) Iniciando envio da mensagem pelo client");
 
             await context.Channel.SendMessageAsync(embed);
-            await Program.client.SendMessageAsync(context.Channel, $"Aqui está!");
+            await Program.client.SendMessageAsync(context.Channel, Program.GetTaskDoneMessage());
 
             Console.WriteLine("(Command.FraseDoDia_fraseAleatoria) Mensagem enviada pelo client");
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Frase enviada");
         }
+
+
 
         [Command("PersonalizadaRapida")]
         [Aliases("PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
@@ -112,6 +116,51 @@ namespace GarçomDoKitts
         {
             await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max);
         }
+
+        [Command("ValorantMapa")]
+        [Aliases("ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear")]
+        public async Task Jogos_Valorant_SortearMapa(CommandContext context)
+        {
+            await Jogos_Valorant_SortearMapa(context, true);
+        }
+
+        [Command("ValorantMapa")]
+        public async Task Jogos_Valorant_SortearMapa(CommandContext context, bool onlyRotation)
+        {
+            DiscordEmbedBuilder builder = new DiscordEmbedBuilder();
+
+            Console.WriteLine("(Jogos/Valorant) Sorteando mapa");
+
+            await context.Channel.SendMessageAsync("Sorteando um mapa...");
+
+            ValorantMapa mapaEscolhido = await Program.modulo_Jogos.Valorant_SortearMapa(onlyRotation);
+
+            Console.WriteLine("(Jogos/Valorant) Mapa sorteado");
+
+            builder.Title = mapaEscolhido.Name;
+            builder.Color = DiscordColor.Red;
+            builder.ImageUrl = mapaEscolhido.ImageURL;
+
+            
+            await context.Channel.SendMessageAsync(builder);
+            await context.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
+        }
+
+
+
+        [Command("Shutdown")]
+        [Aliases("Kill")]
+        public async Task Program_Close(CommandContext context)
+        {
+            if (context.User.Id == Program.config.Program_AdminID)
+            {
+                Console.WriteLine("(Program) Shutting Down");
+                Program.Program_Closing(this, EventArgs.Empty);
+                Environment.Exit(0);
+            }
+        }        
+
+
 
     }
 
