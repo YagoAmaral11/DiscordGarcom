@@ -15,8 +15,93 @@ namespace GarçomDoKitts
     public class Commands : BaseCommandModule
     {
 
+        public static bool VerifyAdmin(DiscordUser author)
+        {
+            if (author.Id == Program.config.Program_AdminID)
+                return true;
+            return false;
+        }
+
+
+
+        [Group("Ajuda")]        
+        [Aliases("h", "?", "Help")]
+        public class HelpCommands
+        {
+            
+            [GroupCommand()]
+            public async Task Frases(CommandContext context)
+            {
+                DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+                embed.Title = "Comandos de frase";
+                embed.Color = DiscordColor.Green;
+                embed.Description = "";
+
+                embed.Description += "**Garçom, FraseDiária** *(fd, FraseDoDia, FraseDaily)*: Mostra qual foi a frase do dia do frases\n";
+                embed.Description += "**Garçom, FraseAleatória** *(fa, FraseRandom, RandomFrase)*: Envia uma frase aleatória do frases\n";                
+
+                await context.Channel.SendMessageAsync(embed.Build());  
+            }
+
+            [GroupCommand()]
+            public async Task Jukebox(CommandContext context)
+            {
+                DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+                embed.Title = "Comandos da Jukebox";
+                embed.Color = DiscordColor.Green;
+                embed.Description = "";
+
+                embed.Description += "**Garçom, tocar** *(p, Play)*: Adiciona uma música na fila";
+                embed.Description += "**Garçom, parar** *(dc, Stop, disconnect)*: Disconecta o bot e desliga a jukebox";
+                embed.Description += "**Garçom, pausa** *(ps, Pause)*: Pausa e despausa a jukebox";
+                embed.Description += "**Garçom, pular** *(skp, skip, skipar)*: Pausa e despausa a jukebox";
+                embed.Description += "**Garçom, fila** *(q, ls, queue, listar, musicas, tocando, playing)*: Mostra a música que está tocando agora e a fila de músicas";
+                embed.Description += "**Garçom, remover <Índice>** *(r, remove, filaRemover)*: Remove uma música da fila de músicas, de acordo com o índice";
+                embed.Description += "**Garçom, jump <Índice>** *(jmp, skipTo, pularPara, filaPular, queueJump, queueSkip)*: Pula até a música do índice";
+                embed.Description += "**Garçom, próxima <Índice>** *(nxt, next, QueueNext, filaProxima, filaNext)*: Seleciona a música do índice para ser a próxima à tocar";
+                embed.Description += "**Garçom, adiantar <Índice>** *(qp, TocarDaFila, QueuePlay, PlayQueue)*: Pula a música atual e toca à do índice";
+
+                await context.Channel.SendMessageAsync(embed.Build());
+            }
+
+            [GroupCommand()]
+            public async Task Perso(CommandContext context)
+            {
+                DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+                embed.Title = "Comandos da Personalizada";
+                embed.Color = DiscordColor.Green;
+                embed.Description = "";
+
+                embed.Description += "**Garçom, PersonalizadaRápida** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call";
+                embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time";
+
+                await context.Channel.SendMessageAsync(embed.Build());
+            }
+
+            [GroupCommand()]
+            public async Task Valorant(CommandContext context)
+            {
+                DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+                embed.Title = "Comandos de Valorant";
+                embed.Color = DiscordColor.Green;
+                embed.Description = "";
+
+                embed.Description += "**Garçom, valorantMapa** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória da rotação do valorant";
+                embed.Description += "**Garçom, valorantMapa <Rotação: true or false>** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória do valorant, da rotação ou não";
+
+                await context.Channel.SendMessageAsync(embed.Build());
+            }
+
+        }
+
+
+
         [Command("FraseDiaria")]
-        [Aliases("FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase", "fd")]
+        [Aliases("fd", "FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase")]
         public async Task Frases_mostrarFrase(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mostrando a frase diária, pedido por: {context.User.Username} ({context.User.Id})");
@@ -39,7 +124,7 @@ namespace GarçomDoKitts
         }
 
         [Command("FraseAleatoria")]
-        [Aliases("FraseRandom", "RandomFrase", "FraseAleatória", "fa")]
+        [Aliases("fa", "FraseRandom", "RandomFrase", "FraseAleatória")]
         public async Task Frases_fraseAleatoria(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Mostrando uma frase aleatória, pedido por: {context.User.Username} ({context.User.Id})");
@@ -102,10 +187,21 @@ namespace GarçomDoKitts
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Frase enviada");
         }
 
+        [Command("FrasesFetch")]
+        [Aliases("ff")]
+        public async Task Frases_fetch(CommandContext context)
+        {
+            if (VerifyAdmin(context.User) == false)
+                return;
+
+            await Program.modulo_Frases.Fetch();
+            await context.Channel.SendMessageAsync("Dando fetch nas frases");
+        }
+
 
 
         [Command("PersonalizadaRapida")]
-        [Aliases("PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso", "fp")]
+        [Aliases("fp", "PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
         public async Task Jogos_PersoFast(CommandContext context)
         {
             await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message);
@@ -118,7 +214,7 @@ namespace GarçomDoKitts
         }
 
         [Command("ValorantMapa")]
-        [Aliases("ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear", "vlmp")]
+        [Aliases("vlmp", "valmp", "valMap", "ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear")]
         public async Task Jogos_Valorant_SortearMapa(CommandContext context)
         {
             await Jogos_Valorant_SortearMapa(context, true);
@@ -146,9 +242,10 @@ namespace GarçomDoKitts
             await context.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
         }
 
+        
 
         [Command("Tocar")]
-        [Aliases("Play", "Jukebox", "p")]
+        [Aliases("p", "Play")]
         public async Task Jukebox_Play(CommandContext context, [RemainingText] string link)
         {            
             DiscordMember pedinte = context.Member;
@@ -165,7 +262,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Parar")]
-        [Aliases("Stop", "Disconnect", "q")]
+        [Aliases("dc", "Stop", "Disconnect")]
         public async Task Jukebox_Stop(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
@@ -182,7 +279,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Pausar")]
-        [Aliases("Pause", "ps")]
+        [Aliases("ps", "Pause")]
         public async Task Jukebox_Pause(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
@@ -199,7 +296,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Pular")]
-        [Aliases("Skip", "Skipar", "skp")]
+        [Aliases("skp", "Skip", "Skipar")]
         public async Task Jukebox_Skip(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
@@ -216,24 +313,94 @@ namespace GarçomDoKitts
         }
 
         [Command("Fila")]
-        [Aliases("Lista", "Listar", "Musicas", "Queue", "List", "Ls", "Musics", "Tocando", "Playing")]
+        [Aliases("q", "Lista", "Listar", "Musicas", "Queue", "List", "Ls", "Musics", "Tocando", "Playing")]
         public async Task Jukebox_QueueShow(CommandContext context)
         {            
             DiscordChannel canalDeTexto = context.Channel;
 
             await Program.modulo_Jukebox.QueueShow(canalDeTexto);
         }
+        
+        [Command("Remover")]
+        [Aliases("r", "Remove", "FilaRemover", "QueueRemove")]
+        public async Task Jukebox_QueueRemove(CommandContext context, int index)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.QueueRemove(canalDeVoz, canalDeTexto, index);
+        }
+
+        [Command("PularPara")]
+        [Aliases("jmp", "Jump", "SkipTo", "QueueJump", "QueueSkip", "FilaPular")]
+        public async Task Jukebox_QueueSkipTo(CommandContext context, int index)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.QueueSkipTo(canalDeVoz, canalDeTexto, index);
+        }
+
+        [Command("Próxima")]
+        [Aliases("nxt", "Proxima", "Next", "QueueNext", "FilaProxima", "FilaNext")]
+        public async Task Jukebox_QueuePriorityNext(CommandContext context, int index)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.QueuePriorityNext(canalDeVoz, canalDeTexto, index);
+        }
+
+        [Command("Adiantar")]
+        [Aliases("qp", "TocarDaFila", "QueuePlay", "PlayQueue")]
+        public async Task Jukebox_QueuePriorityPlay(CommandContext context, int index)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.QueuePriorityPlay(canalDeVoz, canalDeTexto, index);
+        }
+
+
 
         [Command("Shutdown")]
         [Aliases("Kill")]
         public async Task Program_Close(CommandContext context)
         {
-            if (context.User.Id == Program.config.Program_AdminID)
-            {
-                Console.WriteLine("(Program) Shutting Down");
-                Program.Program_Closing(this, EventArgs.Empty);
-                Environment.Exit(0);
-            }
+            if (VerifyAdmin(context.User) == false)
+                return;
+
+            Console.WriteLine("(Program) Shutting Down");
+            Program.Program_Closing(this, EventArgs.Empty);
+            Environment.Exit(0);
         }        
 
     }

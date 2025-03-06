@@ -11,6 +11,7 @@ using DSharpPlus.Net;
 using Newtonsoft.Json;
 using DSharpPlus.Lavalink;
 using DSharpPlus.Entities;
+using System.Reflection;
 
 namespace GarçomDoKitts
 {
@@ -431,27 +432,134 @@ namespace GarçomDoKitts
         }
 
         // Remove uma música da fila por índice
-        public async Task QueueRemove(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte)
+        public async Task QueueRemove(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool showFeedback = true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
+                return;
+
+            if (index < 0 || index > songQueue.Count)
+            {
+                await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
+                return;
+            }
+
+            LavalinkTrack track = songQueue[index];
+            songQueue.Remove(track);
+
+            if (showFeedback)
+            {
+                await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
+                await canalDeTextoPedinte.SendMessageAsync($"{track.Title} foi removido da lista da jukebox");
+            }
         }
 
         // Pula até o índice X da fila
-        public async Task QueueSkipTo()
+        public async Task QueueSkipTo(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool showFeedback = true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
+                return;
+
+            if (index < 0 || index > songQueue.Count)
+            {
+                await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
+                return;
+            }
+
+            await lavalinkPlayback.PauseAsync();
+            songPaused = true;
+
+            if (showFeedback)
+            {
+                await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
+                await canalDeTextoPedinte.SendMessageAsync($"Pulando até a música {songQueue[index].Title}");
+            }
+
+            for (int i = 0; i <= index - 1; i++)
+            {
+                songQueue.RemoveAt(i);
+            }                        
+
+            await lavalinkPlayback.StopAsync(); // Pula a música
+
+            await lavalinkPlayback.ResumeAsync();
+            songPaused = false;
         }
 
         // Joga a música índice X da fila até o início
-        public async Task QueuePriorityNext()
+        public async Task QueuePriorityNext(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool sendFeedback =  true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
+                return;
+
+            if (index < 0 || index > songQueue.Count)
+            {
+                await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
+                return;
+            }
+
+            // pausa o playback para evitar problemas
+            await lavalinkPlayback.PauseAsync();
+            songPaused = true;
+
+            LavalinkTrack track = songQueue[index]; // pega a música que deve ser feita a próxima
+            List<LavalinkTrack> copy = new(songQueue); // Copia as músicas para uma Lista reserva
+
+            copy.Remove(track); // Retira a música da fila reserva
+
+            // Cria uma nova fila com a música escolhida sendo a primeira da fila
+            songQueue.Clear();
+            songQueue.Add(track);
+
+            foreach (var song in copy)
+            {
+                songQueue.Add(song);
+            }
+
+            // despausa o playback
+            await lavalinkPlayback.ResumeAsync();
+            songPaused = false;
+
+            // feedback
+            if (sendFeedback == false)
+                return;
+
+            await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
+            await canalDeTextoPedinte.SendMessageAsync($"{track.Title} será a próxima música a ser tocada");
         }
 
         // Joga a música índice X da fila até o início, pula a música atual
-        public async Task QueuePriorityPlay()
+        public async Task QueuePriorityPlay(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool showFeedback = true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
+                return;
+
+            if (index < 0 || index > songQueue.Count)
+            {
+                await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
+                return;
+            }
+
+            await QueuePriorityNext(canalDeVozPedinte, canalDeTextoPedinte, index, false);
+
+            if (showFeedback)
+            {
+                await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
+                await canalDeTextoPedinte.SendMessageAsync($"Tocando agora a música {songQueue.First().Title} da fila");
+            }
+
+            await lavalinkPlayback.StopAsync();
         }        
 
         public async Task SaveInstance()
