@@ -106,6 +106,14 @@ namespace GarçomDoKitts.configs
         // Backuper
         public double Backuper_BackupIntervalMs { get; set; } 
 
+        // Jukebox
+        public string Jukebox_Hostname { get; set; } // Lavalink ip
+        public int Jukebox_Port { get; set; } // Lavalink porta
+        public bool Jukebox_Secured { get; set; } // Lavalink ssl
+        public string Jukebox_Password { get; set; } // Lavalink password
+        public ulong Jukebox_CommandChannel { get; set; } // Canal para receber comandos das músicas
+        public float Jukebox_Timeout { get; set; } // Tempo até o bot desconectar se não tiver ninguém na call
+
         public ConfigJSON()
         {
             Prefix = "Garçom, ";
@@ -127,6 +135,13 @@ namespace GarçomDoKitts.configs
             Frases_CanalEnvioID = 832773492738490452;
 
             Backuper_BackupIntervalMs = 30 * 60000; // A cada 30 minutos
+
+            Jukebox_Hostname = "localhost";
+            Jukebox_Port = 2333;
+            Jukebox_Secured = true;
+            Jukebox_Password = "youshallnotpass";
+            Jukebox_CommandChannel = 898676291010699264;
+            Jukebox_Timeout = 5 * 60 * 1000;
         }
     }    
 

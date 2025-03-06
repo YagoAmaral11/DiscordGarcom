@@ -1,5 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.CommandsNext;
+using DSharpPlus.Lavalink;
 using DSharpPlus.Entities;
 using GarçomDoKitts.configs;
 using System;
@@ -30,7 +31,7 @@ namespace GarçomDoKitts
         public static Frases modulo_Frases = new();      
         public static Backuper modulo_Backuper = new();
         public static Jogos modulo_Jogos = new();        
-
+        public static Jukebox modulo_Jukebox = new();
 
         private static async Task Main(string[] args)
         {
@@ -128,6 +129,7 @@ namespace GarçomDoKitts
             await modulo_Frases.Init();
             await modulo_Jogos.Init();
             modulo_Backuper.Init();
+            await modulo_Jukebox.Init();
 
             // Eventos
             Console.WriteLine("(Program) Inicializando Eventos");
@@ -185,7 +187,7 @@ namespace GarçomDoKitts
         {
             Console.WriteLine("(Program) Bot finalizando");
             
-            SaveModules();
+            SaveModules();            
             
             Console.WriteLine("(Program) Bot finalizado");
         }
@@ -234,15 +236,16 @@ namespace GarçomDoKitts
 
 
         // Loop
-        private static void Loop(object sender, ElapsedEventArgs e)
+        private static async void Loop(object sender, ElapsedEventArgs e)
         {
             if (config.Log_Ticks)
             {
                 Console.WriteLine($"(Program) Bot Ticking in {GetTime()}");                
             }
 
-            modulo_Frases.Loop();
-            modulo_Backuper.Loop();
+            await modulo_Frases.Loop();
+            await modulo_Backuper.Loop();
+            modulo_Jukebox.Loop();
         }
 
         private static void LogLoop(object sender, ElapsedEventArgs e)

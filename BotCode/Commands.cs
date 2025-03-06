@@ -16,7 +16,7 @@ namespace GarçomDoKitts
     {
 
         [Command("FraseDiaria")]
-        [Aliases("FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase")]
+        [Aliases("FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase", "fd")]
         public async Task Frases_mostrarFrase(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mostrando a frase diária, pedido por: {context.User.Username} ({context.User.Id})");
@@ -32,14 +32,14 @@ namespace GarçomDoKitts
 
             await context.Channel.SendMessageAsync("Servindo a frase diária novamente, em um instante...");
             await Program.client.SendMessageAsync(context.Channel, $"Mostrando a frase de {Program.modulo_Frases.diaUltimoEnvio.ToString(Program.config.Program_LocalCulture)}");
-            await Program.modulo_Frases.Send();
+            await Program.modulo_Frases.Send(context.Channel);
             await Program.client.SendMessageAsync(context.Channel, Program.GetTaskDoneMessage());
 
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Frase enviada");
         }
 
         [Command("FraseAleatoria")]
-        [Aliases("FraseRandom", "RandomFrase", "FraseAleatória")]
+        [Aliases("FraseRandom", "RandomFrase", "FraseAleatória", "fa")]
         public async Task Frases_fraseAleatoria(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Mostrando uma frase aleatória, pedido por: {context.User.Username} ({context.User.Id})");
@@ -105,7 +105,7 @@ namespace GarçomDoKitts
 
 
         [Command("PersonalizadaRapida")]
-        [Aliases("PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
+        [Aliases("PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso", "fp")]
         public async Task Jogos_PersoFast(CommandContext context)
         {
             await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message);
@@ -118,7 +118,7 @@ namespace GarçomDoKitts
         }
 
         [Command("ValorantMapa")]
-        [Aliases("ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear")]
+        [Aliases("ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear", "vlmp")]
         public async Task Jogos_Valorant_SortearMapa(CommandContext context)
         {
             await Jogos_Valorant_SortearMapa(context, true);
@@ -147,6 +147,82 @@ namespace GarçomDoKitts
         }
 
 
+        [Command("Tocar")]
+        [Aliases("Play", "Jukebox", "p")]
+        public async Task Jukebox_Play(CommandContext context, [RemainingText] string link)
+        {            
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.Play(pedinte, canalDeVoz, canalDeTexto, link);
+        }
+
+        [Command("Parar")]
+        [Aliases("Stop", "Disconnect", "q")]
+        public async Task Jukebox_Stop(CommandContext context)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.Stop(pedinte, canalDeVoz, canalDeTexto);
+        }
+
+        [Command("Pausar")]
+        [Aliases("Pause", "ps")]
+        public async Task Jukebox_Pause(CommandContext context)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.Pause(canalDeVoz, canalDeTexto);
+        }
+
+        [Command("Pular")]
+        [Aliases("Skip", "Skipar", "skp")]
+        public async Task Jukebox_Skip(CommandContext context)
+        {
+            DiscordMember pedinte = context.Member;
+            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeTexto = context.Channel;
+
+            // Pré verificações
+            if (!await Jukebox.PreVerify(pedinte, canalDeTexto, canalDeVoz))
+            {
+                return;
+            }
+
+            await Program.modulo_Jukebox.Skip(canalDeVoz, canalDeTexto);
+        }
+
+        [Command("Fila")]
+        [Aliases("Lista", "Listar", "Musicas", "Queue", "List", "Ls", "Musics", "Tocando", "Playing")]
+        public async Task Jukebox_QueueShow(CommandContext context)
+        {            
+            DiscordChannel canalDeTexto = context.Channel;
+
+            await Program.modulo_Jukebox.QueueShow(canalDeTexto);
+        }
 
         [Command("Shutdown")]
         [Aliases("Kill")]
@@ -159,8 +235,6 @@ namespace GarçomDoKitts
                 Environment.Exit(0);
             }
         }        
-
-
 
     }
 

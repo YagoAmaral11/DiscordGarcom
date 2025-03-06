@@ -1,0 +1,462 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using GarçomDoKitts.configs;
+using DSharpPlus;
+using DSharpPlus.CommandsNext;
+using System.Net;
+using DSharpPlus.Net;
+using Newtonsoft.Json;
+using DSharpPlus.Lavalink;
+using DSharpPlus.Entities;
+
+namespace GarçomDoKitts
+{
+    public class Jukebox
+    {
+        // Config                
+        [JsonIgnore] public static ulong channelWhitelistId => Program.config.Jukebox_CommandChannel;
+
+        // Runtime data
+        [JsonIgnore] public DiscordChannel channelMusic; // Canal para enviar mensagens de música        
+        [JsonIgnore] public LavalinkTrack songCurrent = null; // Qual música está tocando agora
+        [JsonIgnore] public List<LavalinkTrack> songQueue = new(); // Quais as próximas músicas que devem tocar
+        [JsonIgnore] public bool songPaused = false;
+
+        [JsonIgnore] public LavalinkExtension lavalink; // Lavalink desse bot
+        [JsonIgnore] public LavalinkNodeConnection lavalinkNode; // Nodo usado nesse server para música
+        [JsonIgnore] public float timeoutMs;
+
+        // Properties
+        [JsonIgnore] public DiscordChannel channelConnectedVC => lavalinkPlayback?.Channel; // Canal que o bot está conectado
+        [JsonIgnore] public LavalinkGuildConnection lavalinkPlayback => lavalinkNode.GetGuildConnection(channelMusic.Guild);
+        [JsonIgnore] public bool IsConnected 
+        {
+            get
+            {
+                if (lavalinkPlayback != null && channelConnectedVC != null)
+                {
+                    return true;
+                }
+                return false;
+            }
+        }
+        [JsonIgnore] public bool ThereIsQueue 
+        {
+            get
+            {
+                if (songQueue.Count > 0)
+                {
+                    return true;
+                }
+                return false;
+            }
+        }
+
+
+        public async Task Init()
+        {
+            ConnectionEndpoint endpoint = new()
+            {
+                Hostname = Program.config.Jukebox_Hostname,
+                Port = Program.config.Jukebox_Port,
+                Secured = Program.config.Jukebox_Secured
+            };
+
+            LavalinkConfiguration config = new()
+            {
+                Password = Program.config.Jukebox_Password,
+                RestEndpoint = endpoint,
+                SocketEndpoint = endpoint                
+            };
+            
+            songCurrent = null;
+            songQueue = new();
+
+            songPaused = false;
+
+            channelMusic = await Program.client.GetChannelAsync(channelWhitelistId);
+
+            lavalink = Program.client.UseLavalink();            
+            await lavalink.ConnectAsync(config);
+
+            lavalinkNode = lavalink.ConnectedNodes.Values.First();
+            
+        }
+
+        public async void Loop()
+        {
+            // Sair da call se não tiver ninguém            
+            if (IsConnected && lavalinkPlayback.Channel.Users.Count == 1)
+            {                
+                if (timeoutMs > 0)
+                {
+                    timeoutMs -= Program.config.Timers_TickTimerMs;                    
+                }
+                else
+                {
+                    Console.WriteLine("(Jukebox) Ninguém na call, desconectando por timeout");
+                    await DisconnectAndReset();
+                    timeoutMs = Program.config.Jukebox_Timeout;
+                }                
+            }
+            else if (IsConnected && lavalinkPlayback.Channel.Users.Count > 1)
+            {
+                timeoutMs = Program.config.Jukebox_Timeout;
+            }
+        }
+
+
+        // Verifica se o usuário está em um VC e ele é válido
+        public static async Task<bool> PreVerify(DiscordMember pedinte, DiscordChannel canalDeTexto, DiscordChannel canalDeVoz)
+        {
+            if (pedinte.VoiceState == null)
+            {
+                await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
+                return false;
+            }
+
+            if (canalDeVoz.Type != ChannelType.Voice)
+            {
+                await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
+                return false;
+            }
+
+            return true;
+        }
+
+        // Retorna verdadeiro se tiver mandando mensagem no canal certo
+        public async Task<bool> VerifyWhitelist(DiscordChannel mensagemEnviada)
+        {
+            Console.WriteLine("(Jukebox) Verificando se a mensagem foi enviada no canal correto");
+
+            if (mensagemEnviada != channelMusic)
+            {
+                await mensagemEnviada.SendMessageAsync($"Infelizmente só posso responder à comandos de música no canal {channelMusic.Mention}.\nTente novamente lá");
+                Console.WriteLine("(Jukebox) Canal incorreto");
+                return false;
+            }
+            else
+            {
+                Console.WriteLine("(Jukebox) Canal correto");
+                return true;
+            }
+        }
+
+        // Retorna verdadeiro se estiver no mesmo canal de voice que o bot
+        public async Task<bool> VerifyUsage(DiscordChannel canalDeVozDoPedinte, DiscordChannel canalDeTexto)
+        {
+            if (channelConnectedVC != null && channelConnectedVC != canalDeVozDoPedinte)
+            {
+                await canalDeTexto.SendMessageAsync($"Já estou sendo usado em outro canal de voz {channelConnectedVC.Mention}");
+                Console.WriteLine("(Jukebox) Bot já está sendo usado em outro canal");
+                return false;
+            }
+
+            return true;
+        }
+
+        // Retorna verdadeiro se conectou no canal de voz do pedinte
+        public async Task<bool> ConnectToVoice(DiscordMember pedinte, DiscordChannel canalDeVoz, DiscordChannel canalDeTexto)
+        {
+            Console.WriteLine("(Jukebox) Conectando no canal de voz");
+
+            if (!await VerifyUsage(canalDeVoz, canalDeTexto))
+            {                
+                return false;
+            }
+
+            // Se o bot já estiver conectado
+            if (lavalinkPlayback != null)
+            {
+                return true;
+            }
+
+            await lavalinkNode.ConnectAsync(canalDeVoz);            
+
+            if (lavalinkPlayback == null)
+            {
+                await canalDeTexto.SendMessageAsync("Falha ao conectar no canal");
+                Console.WriteLine("(Jukebox) Bot não conseguiu se conectar no canal");
+                return false;
+            }
+            
+            timeoutMs = Program.config.Jukebox_Timeout;
+
+            lavalinkPlayback.PlaybackFinished += LavalinkPlayback_PlaybackFinished;
+            return true;
+        }
+
+        // Retorna a primeira correspondência de música, se achar uma.
+        public async Task<LavalinkTrack> FetchTrack(string link, DiscordChannel canalDeTexto)
+        {
+            Console.WriteLine($"(Jukebox) Procurando música {link}");
+
+            LavalinkLoadResult busca = await lavalinkNode.Rest.GetTracksAsync(link, LavalinkSearchType.Plain);
+
+            if (busca.LoadResultType == LavalinkLoadResultType.NoMatches || busca.LoadResultType == LavalinkLoadResultType.LoadFailed)
+            {
+                busca = await lavalinkNode.Rest.GetTracksAsync(link, LavalinkSearchType.Youtube);
+
+                if (busca.LoadResultType == LavalinkLoadResultType.NoMatches || busca.LoadResultType == LavalinkLoadResultType.LoadFailed)
+                {
+                    busca = await lavalinkNode.Rest.GetTracksAsync(link, LavalinkSearchType.SoundCloud);
+                }
+            }
+
+            if (busca.LoadResultType == LavalinkLoadResultType.NoMatches || busca.LoadResultType == LavalinkLoadResultType.LoadFailed)
+            {
+                await canalDeTexto.SendMessageAsync("Musica não encontrada");
+                Console.WriteLine($"(Jukebox) Música não encontrada");
+                return null;
+            }
+
+            Console.WriteLine($"(Jukebox) Música encontrada: {busca.Tracks.First().Title}");
+            return busca.Tracks.First();
+        }
+
+        // Retorna um embed da música que foi adicionada à fila ou irá tocar em breve
+        public DiscordEmbed TrackEmbed(string header, LavalinkTrack track)
+        {
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder()
+            {
+                Color = DiscordColor.Violet,
+                Title = header,
+                Description = $"{track.Title} ({track.Length.ToString(@"mm\:ss")})\n{track.Author}\nFonte: {track.Uri.Host}"
+            };
+
+            if (track.Uri.Host == "www.youtube.com")
+            {
+                embed.ImageUrl = $"https://img.youtube.com/vi/{track.Uri.AbsoluteUri.Substring(track.Uri.AbsoluteUri.IndexOf('=') + 1)}/0.jpg";
+            }
+
+            return embed.Build();
+        }
+
+        public async Task LavalinkPlayback_PlaybackFinished(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackFinishEventArgs args)
+        {
+            Console.WriteLine("(Jukebox) Música terminada");
+
+            songCurrent = null;
+            await PlayNext(channelMusic);
+        }
+
+        public async Task DisconnectAndReset()
+        {
+            songPaused = false;            
+            songCurrent = null;
+            songQueue.Clear();
+
+            lavalinkPlayback.PlaybackFinished -= LavalinkPlayback_PlaybackFinished;
+            await lavalinkPlayback.DisconnectAsync();
+        }
+
+
+
+        public async Task Play(DiscordMember pedinte, DiscordChannel canalDeVoz, DiscordChannel canalDeTexto, string link)
+        {
+            Console.WriteLine("(Jukebox) Recebido pedido para tocar música");
+
+            // Verificar whitelist             
+            if (!await VerifyWhitelist(canalDeTexto))
+                return;
+
+            // Tentar conectar no canal
+            if (!await ConnectToVoice(pedinte, canalDeVoz, canalDeTexto))
+                return;
+
+            // Buscando música, por url, youtube e soundcloud.
+            LavalinkTrack buscaSong = await FetchTrack(link, canalDeTexto);
+            if (buscaSong == null)
+                return;
+                
+            // Tocar música ou adicionar na fila
+            if (songCurrent == null)
+            {
+                songCurrent = buscaSong;
+
+                await lavalinkPlayback.PlayAsync(songCurrent);
+                await canalDeTexto.SendMessageAsync(TrackEmbed("Tocando agora", buscaSong));                
+                await canalDeTexto.SendMessageAsync(Program.GetTaskDoneMessage());
+
+                Console.WriteLine($"(Jukebox) Tocando agora: {buscaSong.Title}");
+            }
+            else
+            {
+                songQueue.Add(buscaSong);
+
+                await canalDeTexto.SendMessageAsync(TrackEmbed("Adicionado à fila", buscaSong));
+                await canalDeTexto.SendMessageAsync(Program.GetTaskDoneMessage());
+
+                Console.WriteLine($"(Jukebox) Adicionado à fila: {buscaSong.Title}");
+            }
+
+        }
+
+        public async Task Stop(DiscordMember pedinte, DiscordChannel canalDeVoz, DiscordChannel canalDeTexto)
+        {
+            Console.WriteLine("(Jukebox) Recebido pedido para parar de tocar música");
+
+            // Verificar whitelist             
+            if (!await VerifyWhitelist(canalDeTexto))
+                return;
+
+            // Verificar uso
+            if (!await VerifyUsage(canalDeVoz, canalDeTexto))
+                return;
+
+            await DisconnectAndReset();
+            await canalDeTexto.SendMessageAsync("Desligando a jukebox");            
+
+            Console.WriteLine("(Jukebox) Parando de tocar e desconectando do canal");
+        }
+
+        public async Task PlayNext(DiscordChannel canalDeTexto)
+        {
+            if (IsConnected && ThereIsQueue && songCurrent == null)
+            {
+                Console.WriteLine($"(Jukebox) Tocando próxima música da fila");
+
+                songCurrent = songQueue.First();                
+
+                await lavalinkPlayback.PlayAsync(songCurrent);
+                await canalDeTexto.SendMessageAsync(TrackEmbed("Tocando agora", songCurrent));                
+
+                Console.WriteLine($"(Jukebox) Tocando agora: {songCurrent.Title}");
+
+                songQueue.Remove(songCurrent);
+            }
+            else
+            {
+                await canalDeTexto.SendMessageAsync("A fila de música está vazia");
+            }
+        }        
+
+        public async Task Pause(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            if (songPaused)
+            {
+                songPaused = false;
+                await lavalinkPlayback.ResumeAsync();
+                await canalDeTexto.SendMessageAsync("Player rodando");
+            }
+            else
+            {
+                songPaused = true;
+                await lavalinkPlayback.PauseAsync();
+                await canalDeTexto.SendMessageAsync("Player pausado");
+            }
+        }
+
+        public async Task Skip(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            Console.WriteLine($"(Jukebox) Pulando Música");
+
+            await lavalinkPlayback.StopAsync();            
+
+            await canalDeTexto.SendMessageAsync("Pulando música");            
+        }
+
+        public async Task Jump10(DiscordChannel canalDeTexto)
+        {
+
+        }
+
+        public async Task Back10(DiscordChannel canalDeTexto)
+        {
+
+        }
+
+        // Mostra a fila
+        public async Task QueueShow(DiscordChannel canalDeTextoPedinte)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTextoPedinte))
+                return;
+
+            Console.WriteLine("(Jukebox) Mostrando fila de músicas");
+
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+            embed.Title = "Fila da Jukebox";
+            embed.Color = DiscordColor.Violet;
+
+            // tocando agora
+            if (songCurrent == null)
+            {
+                embed.Description = $"Nenhuma música tocando no momento";
+            }
+            else
+            {
+                embed.Description = $"**Tocando agora:**\n{songCurrent.Title}\n{lavalinkPlayback.CurrentState.PlaybackPosition.ToString(@"mm\:ss")}/{songCurrent.Length.ToString(@"mm\:ss")}";
+            }                        
+
+            // fila
+            if (!ThereIsQueue)
+            {
+                embed.AddField("Próximas Músicas:", "Nenhuma música na fila");
+            }
+            else
+            {
+                string fila = "";
+
+                int index = 0;
+                foreach(var song in songQueue)
+                {
+                    fila += $"**{index}:** {song.Title} ({song.Length.ToString(@"mm\:ss")})\n";
+                    index++;
+                }
+
+                embed.AddField("Próximas Músicas:", fila);
+            }
+
+            await canalDeTextoPedinte.SendMessageAsync(embed.Build());
+            await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
+        }
+
+        // Remove uma música da fila por índice
+        public async Task QueueRemove(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte)
+        {
+
+        }
+
+        // Pula até o índice X da fila
+        public async Task QueueSkipTo()
+        {
+
+        }
+
+        // Joga a música índice X da fila até o início
+        public async Task QueuePriorityNext()
+        {
+
+        }
+
+        // Joga a música índice X da fila até o início, pula a música atual
+        public async Task QueuePriorityPlay()
+        {
+
+        }        
+
+        public async Task SaveInstance()
+        {            
+        }        
+
+    }
+}

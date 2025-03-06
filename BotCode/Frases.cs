@@ -140,8 +140,13 @@ namespace GarçomDoKitts
         }
 
         // Serve para enviar a frase do dia
-        public async Task Send()
-        {
+        public async Task Send(DiscordChannel canalParaEnviar = null)
+        {            
+            if (canalParaEnviar == null)
+            {
+                canalParaEnviar = canalParaReenviar;
+            }
+
             Console.WriteLine("(FraseDoDia) Construindo mensagem para envio");
 
             DiscordEmbedBuilder embedBuilder = new DiscordEmbedBuilder();
@@ -158,8 +163,7 @@ namespace GarçomDoKitts
             Console.WriteLine("(FraseDoDia) Mensagem construída");
             Console.WriteLine("(FraseDoDia) Iniciando envio da mensagem pelo client");
 
-
-            await canalParaReenviar.SendMessageAsync(embed);
+            await canalParaEnviar.SendMessageAsync(embed);
 
             Console.WriteLine("(FraseDoDia) Mensagem enviada pelo client");
             Console.WriteLine($"(FraseDoDia) Enviada frase '{fraseDoDia.Content}' de {fraseDoDia.Author.Username}, criada em {fraseDoDia.CreationTimestamp}");
