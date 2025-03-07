@@ -31,7 +31,7 @@ namespace GarçomDoKitts
         public static Frases modulo_Frases = new();      
         public static Backuper modulo_Backuper = new();
         public static Jogos modulo_Jogos = new();        
-        public static Jukebox modulo_Jukebox = new();
+        public static Jukebox modulo_Jukebox = new();        
 
         private static async Task Main(string[] args)
         {
@@ -97,7 +97,7 @@ namespace GarçomDoKitts
 
             commandsNextConfiguration = new CommandsNextConfiguration()
             {
-                StringPrefixes = new string[] { config.Prefix },
+                StringPrefixes = config.Prefixs.ToArray(),
                 EnableMentionPrefix = true,
                 EnableDefaultHelp = false,
                 EnableDms = true

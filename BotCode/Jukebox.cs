@@ -109,24 +109,32 @@ namespace GarçomDoKitts
             }
         }
 
-
-        // Verifica se o usuário está em um VC e ele é válido
-        public static async Task<bool> PreVerify(DiscordMember pedinte, DiscordChannel canalDeTexto, DiscordChannel canalDeVoz)
+        public async void ResetConnection()
         {
-            if (pedinte.VoiceState == null)
+            try
             {
-                await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
-                return false;
-            }
+                ConnectionEndpoint endpoint = new()
+                {
+                    Hostname = Program.config.Jukebox_Hostname,
+                    Port = Program.config.Jukebox_Port,
+                    Secured = Program.config.Jukebox_Secured
+                };
 
-            if (canalDeVoz.Type != ChannelType.Voice)
+                LavalinkConfiguration config = new()
+                {
+                    Password = Program.config.Jukebox_Password,
+                    RestEndpoint = endpoint,
+                    SocketEndpoint = endpoint
+                };                
+                
+                await lavalink.ConnectAsync(config);
+
+                lavalinkNode = lavalink.ConnectedNodes.Values.First();
+            }
+            finally
             {
-                await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
-                return false;
-            }
-
-            return true;
-        }
+            }            
+        }        
 
         // Retorna verdadeiro se tiver mandando mensagem no canal certo
         public async Task<bool> VerifyWhitelist(DiscordChannel mensagemEnviada)
@@ -225,7 +233,7 @@ namespace GarçomDoKitts
             {
                 Color = DiscordColor.Violet,
                 Title = header,
-                Description = $"{track.Title} ({track.Length.ToString(@"mm\:ss")})\n{track.Author}\nFonte: {track.Uri.Host}"
+                Description = $"{track.Title} ({PrintTimeSpan(track.Length)})\n{track.Author}\nFonte: {track.Uri.Host}"
             };
 
             if (track.Uri.Host == "www.youtube.com")
@@ -252,6 +260,18 @@ namespace GarçomDoKitts
 
             lavalinkPlayback.PlaybackFinished -= LavalinkPlayback_PlaybackFinished;
             await lavalinkPlayback.DisconnectAsync();
+        }
+
+        public static string PrintTimeSpan(TimeSpan timeSpan)
+        {
+            if (timeSpan.Hours > 0)
+            {
+                return timeSpan.ToString(@"hh\:mm\:ss");
+            }
+            else 
+            {
+                return timeSpan.ToString(@"mm\:ss");
+            }            
         }
 
 
@@ -325,12 +345,13 @@ namespace GarçomDoKitts
                 await lavalinkPlayback.PlayAsync(songCurrent);
                 await canalDeTexto.SendMessageAsync(TrackEmbed("Tocando agora", songCurrent));                
 
-                Console.WriteLine($"(Jukebox) Tocando agora: {songCurrent.Title}");
+                Console.WriteLine($"(Jukebox) Tocando agora: {songCurrent.Title}");                
 
                 songQueue.Remove(songCurrent);
             }
             else
             {
+                Console.WriteLine($"(Jukebox) Fila de músicas vazia");
                 await canalDeTexto.SendMessageAsync("A fila de música está vazia");
             }
         }        
@@ -345,12 +366,14 @@ namespace GarçomDoKitts
 
             if (songPaused)
             {
+                Console.WriteLine($"(Jukebox) Despausando player");
                 songPaused = false;
                 await lavalinkPlayback.ResumeAsync();
                 await canalDeTexto.SendMessageAsync("Player rodando");
             }
             else
             {
+                Console.WriteLine($"(Jukebox) Pausando player");                
                 songPaused = true;
                 await lavalinkPlayback.PauseAsync();
                 await canalDeTexto.SendMessageAsync("Player pausado");
@@ -372,14 +395,167 @@ namespace GarçomDoKitts
             await canalDeTexto.SendMessageAsync("Pulando música");            
         }
 
-        public async Task Jump10(DiscordChannel canalDeTexto)
+        // pula 10s na música
+        public async Task Jump10(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto, bool sendFeedback = true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            Console.WriteLine($"(Jukebox) Pulando 10s do player");
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync("Pulando 10 segundos...");
+            }            
+
+            await lavalinkPlayback.PauseAsync();
+            songPaused = true;
+
+            var timeSpan = lavalinkPlayback.CurrentState.PlaybackPosition.Add(new TimeSpan(0, 0, 10));
+            await lavalinkPlayback.SeekAsync(timeSpan);
+
+            if (timeSpan.Ticks >= songCurrent.Length.Ticks)
+            {
+                await lavalinkPlayback.StopAsync();
+                Console.WriteLine($"(Jukebox) Música terminou com o pulo");
+            }
+
+            await lavalinkPlayback.ResumeAsync();
+            songPaused = false;            
         }
 
-        public async Task Back10(DiscordChannel canalDeTexto)
+        // volta 10s na música
+        public async Task Back10(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto, bool sendFeedback = true)
         {
+            if (!IsConnected)
+                return;
 
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            Console.WriteLine($"(Jukebox) Voltando 10 segundos no player");
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync("Voltando 10 segundos");
+            }            
+
+            await lavalinkPlayback.PauseAsync();
+            songPaused = true;
+
+            var timeSpan = lavalinkPlayback.CurrentState.PlaybackPosition.Subtract(new TimeSpan(0, 0, 10));
+
+            if (lavalinkPlayback.CurrentState.PlaybackPosition.Ticks <= 0)
+            {
+                timeSpan = new TimeSpan(0, 0, 0);
+            }
+
+            await lavalinkPlayback.SeekAsync(timeSpan);
+
+            await lavalinkPlayback.ResumeAsync();
+            songPaused = false;
+        }
+
+        // define o momento da música 
+        public async Task Seek(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto, TimeSpan timeSpan, bool sendFeedback = true)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            // Pular música se avançar mais que o tamanho da música
+            if (timeSpan.Ticks >= songCurrent.Length.Ticks)
+            {
+                await lavalinkPlayback.StopAsync();
+                return;
+            }
+
+            // Reiniciar música se timeSpan foi negativo
+            if (timeSpan.Ticks <= 0)
+            {
+                await lavalinkPlayback.SeekAsync(new TimeSpan(0, 0, 0));
+                return;
+            }
+
+            Console.WriteLine($"(Jukebox) Player setado para {PrintTimeSpan(timeSpan)}");
+
+            await lavalinkPlayback.SeekAsync(timeSpan);
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync($"Pulando para ({PrintTimeSpan(timeSpan)})");
+            }
+        }
+
+        // randomiza a lista
+        public async Task Shuffle(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto, bool sendFeedback = true)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            Console.WriteLine($"(Jukebox) Embaralhando Queue");
+
+            Random rng = new();
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync("Embaralhando fila da jukebox...");
+            }
+
+            await lavalinkPlayback.PauseAsync();
+            songPaused = true;
+            
+            List<LavalinkTrack> newQueue = new();
+
+            int originalAmount = songQueue.Count;
+
+            for (int i = 0; i < originalAmount; i++)
+            {
+                int tmp = rng.Next(songQueue.Count);
+                var track = songQueue[tmp];
+                songQueue.RemoveAt(tmp);
+                newQueue.Add(track);
+            }
+
+            songQueue = new(newQueue);
+
+            await lavalinkPlayback.ResumeAsync();
+            songPaused = false;
+
+            Console.WriteLine($"(Jukebox) Queue embaralhada");
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync("Fila embaralhada!");
+                await canalDeTexto.SendMessageAsync(Program.GetTaskDoneMessage());
+            }
+        }
+
+        // reinicia a música
+        public async Task Restart(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTexto, bool sendFeedback = true)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTexto) || !await VerifyUsage(canalDeVozPedinte, canalDeTexto))
+                return;
+
+            Console.WriteLine($"(Jukebox) Player setado para o início");
+
+            if (sendFeedback)
+            {
+                await canalDeTexto.SendMessageAsync($"Reiniciando música ");
+            }
+
+            await lavalinkPlayback.SeekAsync(new TimeSpan(0, 0, 0));
         }
 
         // Mostra a fila
@@ -405,8 +581,8 @@ namespace GarçomDoKitts
             }
             else
             {
-                embed.Description = $"**Tocando agora:**\n{songCurrent.Title}\n{lavalinkPlayback.CurrentState.PlaybackPosition.ToString(@"mm\:ss")}/{songCurrent.Length.ToString(@"mm\:ss")}";
-            }                        
+                embed.Description = $"**Tocando agora:**\n{songCurrent.Title}\n{PrintTimeSpan(lavalinkPlayback.CurrentState.PlaybackPosition)}/{PrintTimeSpan(songCurrent.Length)}";
+            }
 
             // fila
             if (!ThereIsQueue)
@@ -418,9 +594,9 @@ namespace GarçomDoKitts
                 string fila = "";
 
                 int index = 0;
-                foreach(var song in songQueue)
+                foreach (var song in songQueue)
                 {
-                    fila += $"**{index}:** {song.Title} ({song.Length.ToString(@"mm\:ss")})\n";
+                    fila += $"**{index}:** {song.Title} ({PrintTimeSpan(song.Length)})\n";
                     index++;
                 }
 
@@ -446,6 +622,7 @@ namespace GarçomDoKitts
                 return;
             }
 
+            Console.WriteLine($"(Jukebox) Removendo música {index} da fila ({songQueue[index].Title})");
             LavalinkTrack track = songQueue[index];
             songQueue.Remove(track);
 
@@ -465,8 +642,11 @@ namespace GarçomDoKitts
             if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
                 return;
 
+            Console.WriteLine($"(Jukebox) Pulando para à música {index} da fila");
+
             if (index < 0 || index > songQueue.Count)
             {
+                Console.WriteLine($"(Jukebox) Índice inválido");
                 await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
                 return;
             }
@@ -477,13 +657,15 @@ namespace GarçomDoKitts
             if (showFeedback)
             {
                 await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
-                await canalDeTextoPedinte.SendMessageAsync($"Pulando até a música {songQueue[index].Title}");
+                await canalDeTextoPedinte.SendMessageAsync($"Pulando até a música {songQueue[index].Title}");                
             }
+
+            Console.WriteLine($"(Jukebox) Pulando até {songQueue[index].Title}");
 
             for (int i = 0; i <= index - 1; i++)
             {
                 songQueue.RemoveAt(i);
-            }                        
+            }
 
             await lavalinkPlayback.StopAsync(); // Pula a música
 
@@ -492,7 +674,7 @@ namespace GarçomDoKitts
         }
 
         // Joga a música índice X da fila até o início
-        public async Task QueuePriorityNext(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool sendFeedback =  true)
+        public async Task QueuePriorityNext(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, int index, bool sendFeedback = true)
         {
             if (!IsConnected)
                 return;
@@ -500,11 +682,16 @@ namespace GarçomDoKitts
             if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
                 return;
 
+            Console.WriteLine($"(Jukebox) Selecionando próxima música");
+
             if (index < 0 || index > songQueue.Count)
             {
+                Console.WriteLine($"(Jukebox) Índice inválido");
                 await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
                 return;
             }
+
+            Console.WriteLine($"(Jukebox) {songQueue[index]} será a próxima música");
 
             // pausa o playback para evitar problemas
             await lavalinkPlayback.PauseAsync();
@@ -545,8 +732,11 @@ namespace GarçomDoKitts
             if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
                 return;
 
+            Console.WriteLine($"(Jukebox) Priority play");
+
             if (index < 0 || index > songQueue.Count)
             {
+                Console.WriteLine($"(Jukebox) Índice inválido");
                 await canalDeTextoPedinte.SendMessageAsync("Uma música com esse índice não existe na fila");
                 return;
             }
@@ -557,14 +747,27 @@ namespace GarçomDoKitts
             {
                 await canalDeTextoPedinte.SendMessageAsync(Program.GetTaskDoneMessage());
                 await canalDeTextoPedinte.SendMessageAsync($"Tocando agora a música {songQueue.First().Title} da fila");
+                Console.WriteLine($"(Jukebox) Tocando agora: {songQueue.First().Title}");
             }
 
             await lavalinkPlayback.StopAsync();
-        }        
+        }
 
-        public async Task SaveInstance()
-        {            
-        }        
+        // Limpa a fila
+        public async Task QueueClear(DiscordChannel canalDeVozPedinte, DiscordChannel canalDeTextoPedinte, bool showFeedback = true)
+        {
+            if (!IsConnected)
+                return;
+
+            if (!await VerifyWhitelist(canalDeTextoPedinte) || !await VerifyUsage(canalDeVozPedinte, canalDeTextoPedinte))
+                return;
+
+            Console.WriteLine($"(Jukebox) Limpando fila");
+
+            songQueue.Clear();
+            await canalDeTextoPedinte.SendMessageAsync("Fila da Jukebox limpa");
+        }
 
     }
+
 }

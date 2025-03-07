@@ -78,7 +78,7 @@ namespace GarçomDoKitts.configs
     public class ConfigJSON
     {
         // prefixo
-        public string Prefix { get; set; }
+        public List<string> Prefixs { get; set; }
 
         // Geral
         public TimeZoneInfo Program_UTC { get; set; }
@@ -116,7 +116,17 @@ namespace GarçomDoKitts.configs
 
         public ConfigJSON()
         {
-            Prefix = "Garçom, ";
+            Prefixs = new List<string>
+            {
+                "Garçom, ",
+                "Garcom, ",
+                "Garc ",
+                "Garç ",
+                "!g ",
+                "!G ",
+                "/g ",
+                "/G "
+            };
 
             Program_UTC = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); // Pega o horário de Brasília
             Program_LocalCulture = new CultureInfo("pt-BR"); // Usado para mostrar o tempo certo
