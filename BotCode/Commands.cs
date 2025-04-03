@@ -118,6 +118,8 @@ namespace GarçomDoKitts
 
             embed.Description += "**Garçom, PersonalizadaRápida** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call";
             embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time";
+            embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time> <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time e retirando do sorteio os usuários mencionados, separados por espaço";
+            embed.Description += "**Garçom, PersonalizadaRápida <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, retirando do sorteio os usuários mencionados, separados por espaço";
 
             await context.Channel.SendMessageAsync(embed.Build());
         }
@@ -210,6 +212,59 @@ namespace GarçomDoKitts
             await context.Channel.SendMessageAsync("Mostrando todos os prefixos do Garçom:");
             await context.Channel.SendMessageAsync(tmp);
             await context.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
+        }
+
+        [Command("Contar")]
+        [Aliases("Count", "VoiceCount", "vcc")]
+        public async Task Utility_CountUsersInVoice(CommandContext context)
+        {
+            DiscordMember sender = context.Member;
+            DiscordChannel channel = context.Channel;
+
+            DiscordVoiceState voiceState = sender.VoiceState; // Serve para ver em qual canal da call está o usuário.
+
+            if (voiceState == null)
+            {
+                await Program.client.SendMessageAsync(channel, "Para usar esse comando você deve estar conectado em um canal de voz");
+                return;
+            }
+
+            int All = voiceState.Channel.Users.Count;
+            int Bots = 0;
+            bool selfConnected = false;
+            
+            foreach (DiscordMember user in voiceState.Channel.Users)
+            {
+                if (user.IsBot)
+                    Bots++;
+
+                if (user.Id == Program.client.CurrentUser.Id)
+                    selfConnected = true;
+            }
+
+            if (selfConnected)
+            {
+                if (Bots > 1)
+                {
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots (contando comigo).");
+                }
+                else
+                {
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - 1} desses são pessoas e o outro sou eu");
+                }
+            }
+            else
+            {
+                if (Bots > 0)
+                {
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots.");
+                }
+                else
+                {
+                    await channel.SendMessageAsync($"No total, tem {All} pessoas conectadas em {voiceState.Channel.Mention}.");
+                }
+            }
+
         }
 
 
@@ -324,6 +379,18 @@ namespace GarçomDoKitts
         public async Task Jogos_PersoFast(CommandContext context, uint max)
         {
             await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max);
+        }
+
+        [Command("PersonalizadaRapida")]
+        public async Task Jogos_PersoFast(CommandContext context, params string[] excludedPlayers)
+        {
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, 5, excludedPlayers);
+        }
+
+        [Command("PersonalizadaRapida")]
+        public async Task Jogos_PersoFast(CommandContext context, uint max, params string[] excludedPlayers)
+        {
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max, excludedPlayers);
         }
 
         [Command("ValorantMapa")]

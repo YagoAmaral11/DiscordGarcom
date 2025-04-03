@@ -46,13 +46,15 @@ namespace GarçomDoKitts
             {
                 Console.WriteLine($"(Program) {DataIO.ConfigPath} não encontrado. Verificar se o arquivo existe e está com o nome correto");
                 ConfigReset();
-            }
+            }            
 
             await DataIO.LoadConfig(); // Carrega configs
             await InitDiscordConfig(); // Inicia o client do Discord para o bot            
             await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
             await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
             await InitModules(); // Inicializa os módulos (Carrega informações, etc.)
+
+            // var guild = await client.GetGuildAsync(modulo_Jukebox.channelMusic.GuildId); Não sei pq isso ta aqui
 
             await Task.Delay(-1);
         }

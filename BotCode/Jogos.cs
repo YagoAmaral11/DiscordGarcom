@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -25,7 +26,7 @@ namespace GarçomDoKitts
 
         public string sortStringList(List<string> list) => list[sorteador.Next(0, list.Count - 1)];
 
-        public async Task Personalizada_SortearTimes_fast(DiscordMember member, DiscordMessage originalMessage, uint maxPorTime = 5)
+        public async Task Personalizada_SortearTimes_fast(DiscordMember member, DiscordMessage originalMessage, uint maxPorTime = 5, string[] excludedPlayers = null)
         {
 
             DiscordVoiceState voiceState = member.VoiceState; // Serve para ver em qual canal da call está o usuário.
@@ -51,6 +52,29 @@ namespace GarçomDoKitts
             List<DiscordMember> timeA = new();
             List<DiscordMember> timeB = new();
             List<DiscordMember> sobra = new();
+
+            List<DiscordMember> tmp = new(jogadores);
+
+            // Parte para excluir jogadores do sorteio
+            foreach (DiscordMember jogador in tmp)
+            {
+                if (jogador.Id == Program.client.CurrentUser.Id)
+                {
+                    jogadores.Remove(jogador);
+                    continue;
+                }
+
+                if (excludedPlayers == null)
+                    continue;
+
+                foreach (string user in excludedPlayers)
+                {                    
+                    if ($"<@{jogador.Id}>" == user)
+                    {
+                        jogadores.Remove(jogador);
+                    }
+                }
+            }            
 
             uint jogadoresTotal = (uint) jogadores.Count;
             uint jogadoresPorTime = (uint) jogadoresTotal / 2;
