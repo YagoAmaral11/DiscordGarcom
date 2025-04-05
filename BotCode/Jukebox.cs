@@ -262,17 +262,7 @@ namespace GarçomDoKitts
             await lavalinkPlayback.DisconnectAsync();
         }
 
-        public static string PrintTimeSpan(TimeSpan timeSpan)
-        {
-            if (timeSpan.Hours > 0)
-            {
-                return timeSpan.ToString(@"hh\:mm\:ss");
-            }
-            else 
-            {
-                return timeSpan.ToString(@"mm\:ss");
-            }            
-        }
+        public static string PrintTimeSpan(TimeSpan span) => Program.PrintTimeSpan(span);
 
 
 

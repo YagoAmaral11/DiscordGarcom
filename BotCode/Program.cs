@@ -9,30 +9,45 @@ using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using System.Timers;
+using System.Linq;
 
 namespace GarçomDoKitts
 {
-    internal class Program
+    public static class Program
     {
+        // IO/Data
         public static TokenJSON token;
         public static ConfigJSON config;
         public static TaskDone taskDoneList = new();
         public static readonly string taskDonePath = $"{DataIO.DataFolderPath}mensagens.json";
 
+        // Discord APIs, Channels, Server, etc.
         public static DiscordClient client;
-        public static CommandsNextExtension commands;
+        public static DiscordGuild servidor;
 
+        // Discord Configs/Commands creation
+        public static CommandsNextExtension commands;
         public static DiscordConfiguration discordConfiguration;
         public static CommandsNextConfiguration commandsNextConfiguration;
 
+        // Timers
         public static Timer mainTimer;
         public static Timer logTimer;
 
+        // Módulos
         public static Frases modulo_Frases = new();      
         public static Backuper modulo_Backuper = new();
         public static Jogos modulo_Jogos = new();        
         public static Jukebox modulo_Jukebox = new();        
+        public static GerenciadorDeCanal modulo_GenDeCanal = new();
 
+        // Runtime
+        public static DateTime InitialTime;
+        public const string BotVersion = "0.21";
+        public const string Changelog = "- Adicionado canais temporários: Privados e Públicos\n-Melhorias de QOL";
+
+
+        // Main
         private static async Task Main(string[] args)
         {
             if (!File.Exists(DataIO.TokenPath))
@@ -52,13 +67,11 @@ namespace GarçomDoKitts
             await InitDiscordConfig(); // Inicia o client do Discord para o bot            
             await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
             await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
-            await InitModules(); // Inicializa os módulos (Carrega informações, etc.)
-
-            // var guild = await client.GetGuildAsync(modulo_Jukebox.channelMusic.GuildId); Não sei pq isso ta aqui
+            await InitModules(); // Inicializa os módulos (Carrega informações, etc.)            
+            InitialTime = GetTime();
 
             await Task.Delay(-1);
         }
-
 
         // IO
         public async static void ConfigReset()
@@ -125,13 +138,14 @@ namespace GarçomDoKitts
 
         public async static Task InitModules()
         {
-            Console.WriteLine("(Program) Inicializando módulos");
+            Console.WriteLine("(Program) Inicializando módulos");            
 
             // Módulos            
             await modulo_Frases.Init();
             await modulo_Jogos.Init();
             modulo_Backuper.Init();
             await modulo_Jukebox.Init();
+            await modulo_GenDeCanal.Init();
 
             // Eventos
             Console.WriteLine("(Program) Inicializando Eventos");
@@ -163,7 +177,10 @@ namespace GarçomDoKitts
         // Events
         private static Task Client_Ready(DiscordClient sender, DSharpPlus.EventArgs.ReadyEventArgs args)
         {
-            Console.WriteLine("(DiscordClient) Client inicializado");            
+            Console.WriteLine("(DiscordClient) Client inicializado");
+                       
+            servidor = client.Guilds.Values.First();
+
             return Task.CompletedTask;
         }
 
@@ -202,6 +219,7 @@ namespace GarçomDoKitts
             Console.WriteLine("(Program) Gravando módulos");
 
             modulo_Frases?.SaveInstance();
+            modulo_GenDeCanal?.SaveInstance();
 
             Console.WriteLine("(Program) Módulos gravados");
             return Task.CompletedTask;
@@ -248,6 +266,7 @@ namespace GarçomDoKitts
             await modulo_Frases.Loop();
             await modulo_Backuper.Loop();
             modulo_Jukebox.Loop();
+            modulo_GenDeCanal.Loop();
         }
 
         private static void LogLoop(object sender, ElapsedEventArgs e)
@@ -261,7 +280,23 @@ namespace GarçomDoKitts
 
         // Time
         public static DateTime GetTime() => TimeZoneInfo.ConvertTime(DateTime.UtcNow, config.Program_UTC);
-        public static string PrintTime() => GetTime().ToString(config.Program_LocalCulture);
+        public static string PrintTimeNow() => GetTime().ToString(config.Program_LocalCulture);
+        public static string PrintTime(DateTime time) => time.ToString(config.Program_LocalCulture);
+        public static string PrintTimeSpan(TimeSpan timeSpan)
+        {
+            if (timeSpan.Days > 0)
+            {
+                return timeSpan.ToString(@"dd\dhh\:mm\:ss");
+            }
+            else if (timeSpan.Hours > 0)
+            {
+                return timeSpan.ToString(@"hh\:mm\:ss");
+            }
+            else
+            {
+                return timeSpan.ToString(@"mm\:ss");
+            }
+        }
 
     }           
 }

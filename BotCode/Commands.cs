@@ -54,6 +54,10 @@ namespace GarçomDoKitts
             embed.Description += "**Garçom, AjudaJukebox**: Mostra ajuda relacionada ao módulo de música, o Jukebox\n";
             embed.Description += "**Garçom, AjudaPerso**: Mostra ajuda relacionada ao módulo de Personalizada\n";
             embed.Description += "**Garçom, AjudaValorant**: Mostra ajuda relacionada ao módulo de Valorant\n";
+            embed.Description += "**Garçom, AjudaUtil**: Mostra ajuda relacionada ao módulo de utilidades\n";
+            embed.Description += "**Garçom, AjudaCanalTemp**: Mostra ajuda relacionada ao módulo de canais temporários\n";
+
+
             embed.Description += "**Garçom, Prefixos**: Mostra todos os prefixos aceitos pelo Garçom\n";
 
             await context.Channel.SendMessageAsync(embed.Build());
@@ -88,7 +92,7 @@ namespace GarçomDoKitts
             embed.Description += "**Garçom, tocar** *(p, Play)*: Adiciona uma música na fila\n";
             embed.Description += "**Garçom, parar** *(dc, Stop, disconnect)*: Disconecta o bot e desliga a jukebox\n";
             embed.Description += "**Garçom, pausa** *(ps, Pause)*: Pausa e despausa a jukebox\n";
-            embed.Description += "**Garçom, pular** *(skp, skip, skipar)*: Pausa e despausa a jukebox\n";
+            embed.Description += "**Garçom, pular** *(skp, skip, skipar)*: Pula a música atual e toca a próxima da fila\n";
             embed.Description += "**Garçom, fila** *(q, ls, queue, listar, musicas, tocando, playing)*: Mostra a música que está tocando agora e a fila de músicas\n";
             embed.Description += "**Garçom, remover <Índice>** *(r, remove, filaRemover)*: Remove uma música da fila de músicas, de acordo com o índice\n";
             embed.Description += "**Garçom, jump <Índice>** *(jmp, skipTo, pularPara, filaPular, queueJump, queueSkip)*: Pula até a música do índice\n";
@@ -116,10 +120,10 @@ namespace GarçomDoKitts
             embed.Color = DiscordColor.Green;
             embed.Description = "";
 
-            embed.Description += "**Garçom, PersonalizadaRápida** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call";
-            embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time";
-            embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time> <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time e retirando do sorteio os usuários mencionados, separados por espaço";
-            embed.Description += "**Garçom, PersonalizadaRápida <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, retirando do sorteio os usuários mencionados, separados por espaço";
+            embed.Description += "**Garçom, PersonalizadaRápida** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call\n";
+            embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time\n";
+            embed.Description += "**Garçom, PersonalizadaRápida <Máximo por time> <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, com um número máximo de jogadores por time e retirando do sorteio os usuários mencionados, separados por espaço\n";
+            embed.Description += "**Garçom, PersonalizadaRápida <Menção à usuários>** *(fp, fastPerso, persoRápida)*: Divide dois times de acordo com os integrantes da call, retirando do sorteio os usuários mencionados, separados por espaço\n";
 
             await context.Channel.SendMessageAsync(embed.Build());
         }
@@ -134,12 +138,46 @@ namespace GarçomDoKitts
             embed.Color = DiscordColor.Green;
             embed.Description = "";
 
-            embed.Description += "**Garçom, valorantMapa** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória da rotação do valorant";
-            embed.Description += "**Garçom, valorantMapa <Rotação: true or false>** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória do valorant, da rotação ou não";
+            embed.Description += "**Garçom, valorantMapa** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória da rotação do valorant\n";
+            embed.Description += "**Garçom, valorantMapa <Rotação: true or false>** *(vlmp, valmp, valMap, ValorantMap, ValorantSortearMapa, ValorantMapSort)*: Escolhe um mapa aleatória do valorant, da rotação ou não\n";
 
             await context.Channel.SendMessageAsync(embed.Build());
         }
 
+        [Command("AjudaUtil")]
+        [Aliases("?Util")]
+        public async Task Ajuda_Utility(CommandContext context)
+        {
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+            embed.Title = "Comandos Utilitários";
+            embed.Color = DiscordColor.Green;
+            embed.Description = "";
+
+            embed.Description += "**Garçom, MencionarDeafen** *(udm, MentionDeafen, DeafenMention)*: Menciona todos os usuários que estão no deafen na call que está conectado\n";
+            embed.Description += "**Garçom, Contar** *(count, voiceCount, vcc)*: Conta todos os usuários que estão na call\n";
+            embed.Description += "**Garçom, Status**: Mostra o status do bot, seu uptime, etc.\n";
+
+            embed.Description += "**Garçom, Shutdown** *(kill)*: ***APENAS ADMs*** Desliga o bot\n";
+
+            await context.Channel.SendMessageAsync(embed.Build());
+        }
+
+        [Command("AjudaCanalTemp")]
+        [Aliases("?CanalTemp", "?TempChannel")]
+        public async Task Ajuda_ChannelManager(CommandContext context)
+        {
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+            embed.Color = DiscordColor.Green;
+            embed.Description = "";
+
+            embed.Description += "**Garçom, CanalTemporario** *(tmpC, tempChannel, temporarioCanal)*: Cria um canal temporário, que será destruído automaticamente, depois três horas\n";
+            embed.Description += "**Garçom, CanalTemporario <Duração: XXdYYhZZmWWs>** *(tmpC, tempChannel, temporarioCanal)*: Cria um canal temporário, que será destruído automaticamente, depois de um certo tempo\n";
+            embed.Description += "**Garçom, CanalTemporario <Duração: XXdYYhZZmWWs> <Nome do Canal>** *(tmpC, tempChannel, temporarioCanal)*: Cria um canal temporário, que será destruído automaticamente, depois de um certo tempo, com o nome passado\n";            
+
+            await context.Channel.SendMessageAsync(embed.Build());
+        }
 
 
         [Command("Shutdown")]
@@ -266,6 +304,20 @@ namespace GarçomDoKitts
             }
 
         }
+
+        [Command("Status")]
+        public async Task Utility_BotStatus(CommandContext context)
+        {
+            DiscordEmbedBuilder embed = new();
+
+            embed.Color = DiscordColor.Chartreuse;
+            embed.Title = "Garçom tá ON!";
+            embed.Description = $"**Versão**: {Program.BotVersion}\n**Online desde**: {Program.InitialTime}";
+            embed.Description += $"\n\n**Changelog**\n{Program.Changelog}";
+            
+            await context.Channel.SendMessageAsync(embed.Build());
+        }
+
 
 
         [Command("FraseDiaria")]
@@ -691,6 +743,118 @@ namespace GarçomDoKitts
             await Program.modulo_Jukebox.Shuffle(canalDeVoz, canalDeTexto);
         }
 
-    }
 
+
+        private async Task TempChannel_NewModel(TimeSpan duration, CommandContext context, string ChannelName)
+        {
+            DateTime data = Program.GetTime() + duration;
+
+            var reg = await Program.modulo_GenDeCanal.NovoCanalTemporário(data, ChannelName, context.User);
+
+            if (reg == null)
+            {
+                await context.RespondAsync($"Você já criou {Program.config.ChannelManager_MaxTempPerUser} canais temporários, o máximo permitido");
+                return;
+            }
+
+            // Mensagem de resposta
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+            embed.Color = DiscordColor.IndianRed;
+            embed.Title = "Canal Temporário";
+            embed.Description = $"Novo canal {reg.canal.Mention} criado!\n**Responsável**: {context.User.Username}\n**Duração**: {duration}";
+            await context.RespondAsync(embed.Build());
+            await context.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
+        }
+
+        private async Task TempChannel_NewPrivateModel(TimeSpan duration, CommandContext context, string ChannelName)
+        {
+            DateTime data = Program.GetTime() + duration;
+
+            var reg = await Program.modulo_GenDeCanal.NovoCanalTemporárioPrivado(data, context.User, ChannelName);
+
+            if (reg == null)
+            {
+                await context.RespondAsync($"Você já criou {Program.config.ChannelManager_MaxTempPerUser} canais temporários, o máximo permitido");
+                return;
+            }
+
+            // Mensagem de resposta
+            DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+            embed.Color = DiscordColor.IndianRed;
+            embed.Title = "Canal Temporário";
+            embed.Description = $"Novo canal privado {reg.canal.Mention} criado!\n**Responsável**: {context.User.Username}\n**Duração**: {duration}";
+            await context.RespondAsync(embed.Build());
+            await context.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
+        }
+
+        [Command("canalTemporario")]
+        [Aliases("tmpC", "tempC", "tempChannel", "TemporarioCanal")]
+        public async Task TempChannel_New(CommandContext context)
+        {
+            // Cria canal de acordo com o tempo especificado            
+            await TempChannel_NewModel(new TimeSpan(3, 0, 0), context, $"🕙 Canal de {context.User.Username}");            
+        }
+
+        [Command("canalTemporario")]        
+        public async Task TempChannel_New(CommandContext context, TimeSpan lifespan)
+        {
+            // Máixmo de tempo
+            if (lifespan.TotalDays > 1)
+            {
+                await context.RespondAsync("Canais temporários só podem ter no máximo 1 dia de duração");
+                return;
+            }
+
+            // Cria canal de acordo com o tempo especificado            
+            await TempChannel_NewModel(lifespan, context, $"🕙 Canal de {context.User.Username}");
+        }
+
+        [Command("canalTemporario")]        
+        public async Task TempChannel_New(CommandContext context, TimeSpan lifespan, [RemainingText] string NomeDoCanal)
+        {
+            // Máixmo de tempo
+            if (lifespan.TotalDays > 1)
+            {
+                await context.RespondAsync("Canais temporários só podem ter no máximo 1 dia de duração");
+                return;
+            }
+
+            // Cria canal de acordo com o tempo especificado            
+            await TempChannel_NewModel(lifespan, context, $"🕙 {NomeDoCanal}");
+        }
+
+        [Command("canalTemporarioPrivado")]
+        [Aliases("tmpCp", "tempCp", "tempChannelPrivate", "TemporarioCanalPrivado", "CanalPrivado", "tmppvd")]
+        public async Task TempChannel_NewPrivate(CommandContext context)
+        {
+            await TempChannel_NewPrivateModel(new TimeSpan(3, 0, 0), context, $"🔐 Canal de {context.User.Username}");
+        }
+
+        [Command("canalTemporarioPrivado")]        
+        public async Task TempChannel_NewPrivate(CommandContext context, TimeSpan lifespan)
+        {
+            // Máixmo de tempo
+            if (lifespan.TotalDays > 1)
+            {
+                await context.RespondAsync("Canais temporários só podem ter no máximo 1 dia de duração");
+                return;
+            }
+
+            await TempChannel_NewPrivateModel(lifespan, context, $"🔐 Canal de {context.User.Username}");
+        }
+
+        [Command("canalTemporarioPrivado")]
+        public async Task TempChannel_NewPrivate(CommandContext context, TimeSpan lifespan, [RemainingText] string NomeDoCanal)
+        {
+            // Máixmo de tempo
+            if (lifespan.TotalDays > 1)
+            {
+                await context.RespondAsync("Canais temporários só podem ter no máximo 1 dia de duração");
+                return;
+            }
+
+            await TempChannel_NewPrivateModel(lifespan, context, $"🔐 {NomeDoCanal}");
+        }
+
+    }
 }

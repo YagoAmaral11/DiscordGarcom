@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace GarçomDoKitts.configs
@@ -114,6 +113,12 @@ namespace GarçomDoKitts.configs
         public ulong Jukebox_CommandChannel { get; set; } // Canal para receber comandos das músicas
         public float Jukebox_Timeout { get; set; } // Tempo até o bot desconectar se não tiver ninguém na call
 
+        // Gerenciador De Canais
+        public ulong ChannelManager_Categoria { get; set; }
+        public string ChannelManager_NameTemplate { get; set; } // Como um template de canal
+        public int ChannelManager_MaxTempPerUser { get; set; }
+
+        [JsonConstructor]
         public ConfigJSON()
         {
             Prefixs = new List<string>
@@ -152,6 +157,10 @@ namespace GarçomDoKitts.configs
             Jukebox_Password = "youshallnotpass";
             Jukebox_CommandChannel = 898676291010699264;
             Jukebox_Timeout = 5 * 60 * 1000;
+
+            ChannelManager_Categoria = 1357794738744332489;
+            ChannelManager_NameTemplate = "•᲼";
+            ChannelManager_MaxTempPerUser = 3;
         }
     }    
 
