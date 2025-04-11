@@ -157,6 +157,7 @@ namespace GarçomDoKitts
             embed.Description += "**Garçom, MencionarDeafen** *(udm, MentionDeafen, DeafenMention)*: Menciona todos os usuários que estão no deafen na call que está conectado\n";
             embed.Description += "**Garçom, Contar** *(count, voiceCount, vcc)*: Conta todos os usuários que estão na call\n";
             embed.Description += "**Garçom, Status**: Mostra o status do bot, seu uptime, etc.\n";
+            embed.Description += "**Garçom, Mover <Menção da Call Destino> <Menção da Call Original>** *(mv, move)*: Move todos os usuários da call original para a call destino, se tiver permissões. Use #! para mencionar canais de audio";
 
             embed.Description += "**Garçom, Shutdown** *(kill)*: ***APENAS ADMs*** Desliga o bot\n";
 
@@ -318,6 +319,36 @@ namespace GarçomDoKitts
             await context.Channel.SendMessageAsync(embed.Build());
         }
 
+        [Command("Mover")]
+        [Aliases("Mv", "Move")]
+        public async Task Utility_MoveVc(CommandContext context, string MençãoCanalDestino, string MençãoCanalParaMover)
+        {
+            string channelTargetId = MençãoCanalDestino.Substring(MençãoCanalDestino.IndexOf('#') + 1, MençãoCanalDestino.Length - 3);
+            string channelInitialId = MençãoCanalParaMover.Substring(MençãoCanalParaMover.IndexOf('#') + 1, MençãoCanalParaMover.Length - 3);
+
+            DiscordMember member = await Program.servidor.GetMemberAsync(context.User.Id);
+
+            if (member.Permissions.HasPermission(Permissions.MoveMembers) || member.Permissions.HasPermission(Permissions.Administrator))
+            {
+                DiscordChannel target = Program.servidor.GetChannel(ulong.Parse(channelTargetId));
+                DiscordChannel initial = Program.servidor.GetChannel(ulong.Parse(channelInitialId));
+
+                if (target.Type != ChannelType.Voice || initial.Type != ChannelType.Voice)
+                {
+                    await context.RespondAsync("Algum desses canais não são canais de audio");
+                    return;
+                }
+
+                foreach (var User in initial.Users)
+                {
+                    await target.PlaceMemberAsync(User);
+                }
+            }
+            else
+            {
+                await context.RespondAsync("Somente quem tem permissão para mover usuários pode usar esse comando");
+            }
+        }
 
 
         [Command("FraseDiaria")]

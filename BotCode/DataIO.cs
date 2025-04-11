@@ -118,6 +118,9 @@ namespace GarçomDoKitts.configs
         public string ChannelManager_NameTemplate { get; set; } // Como um template de canal
         public int ChannelManager_MaxTempPerUser { get; set; }
 
+        // Jogos
+        public ulong Jogos_CanalDeLobby { get; set;}
+
         [JsonConstructor]
         public ConfigJSON()
         {
@@ -161,6 +164,8 @@ namespace GarçomDoKitts.configs
             ChannelManager_Categoria = 1357794738744332489;
             ChannelManager_NameTemplate = "•᲼";
             ChannelManager_MaxTempPerUser = 3;
+
+            Jogos_CanalDeLobby = 1360352934264705274;
         }
     }    
 

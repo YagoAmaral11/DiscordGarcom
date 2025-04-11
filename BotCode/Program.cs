@@ -43,8 +43,8 @@ namespace GarçomDoKitts
 
         // Runtime
         public static DateTime InitialTime;
-        public const string BotVersion = "0.21";
-        public const string Changelog = "- Adicionado canais temporários: Privados e Públicos\n-Melhorias de QOL";
+        public const string BotVersion = "0.22";
+        public const string Changelog = "- Adicionado botão para mover membros para canal de personalizada quando um time for sorteado pelo comando fastPerso\n- Comandos para mover usuários entre calls";
 
 
         // Main
@@ -152,6 +152,7 @@ namespace GarçomDoKitts
             client.MessageCreated += Client_MessageCreated;
             client.MessageDeleted += Client_MessageDeleted;
             AppDomain.CurrentDomain.ProcessExit += Program_Closing;
+            client.ComponentInteractionCreated += Client_ComponentInteractionCreated;
 
             // Timer Principal
             Console.WriteLine("(Program) Inicializando timer principal");
@@ -198,6 +199,13 @@ namespace GarçomDoKitts
             Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem criada");
 
             modulo_Frases.FrasePossivelmenteCriada(sender, args);
+
+            return Task.CompletedTask;
+        }
+
+        private static Task Client_ComponentInteractionCreated(DiscordClient sender, DSharpPlus.EventArgs.ComponentInteractionCreateEventArgs args)
+        {
+            Console.WriteLine($"(Program) Interação criada: {args.Interaction.Data.CustomId} criada por {args.User.Username} ({args.User.Id})");
 
             return Task.CompletedTask;
         }
