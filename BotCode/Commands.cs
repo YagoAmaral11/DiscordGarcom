@@ -157,9 +157,9 @@ namespace GarçomDoKitts
             embed.Description += "**Garçom, MencionarDeafen** *(udm, MentionDeafen, DeafenMention)*: Menciona todos os usuários que estão no deafen na call que está conectado\n";
             embed.Description += "**Garçom, Contar** *(count, voiceCount, vcc)*: Conta todos os usuários que estão na call\n";
             embed.Description += "**Garçom, Status**: Mostra o status do bot, seu uptime, etc.\n";
-            embed.Description += "**Garçom, Mover <Menção da Call Destino> <Menção da Call Original>** *(mv, move)*: Move todos os usuários da call original para a call destino, se tiver permissões. Use #! para mencionar canais de audio";
+            embed.Description += "**Garçom, Mover <Menção da Call Destino> <Menção da Call Original>** *(mv, move)*: Move todos os usuários da call original para a call destino, se tiver permissões. Use #! para mencionar canais de audio\n";
 
-            embed.Description += "**Garçom, Shutdown** *(kill)*: ***APENAS ADMs*** Desliga o bot\n";
+            embed.Description += "***[APENAS ADMs]*** **Garçom, Shutdown** *(kill)*: Desliga o bot\n";
 
             await context.Channel.SendMessageAsync(embed.Build());
         }
@@ -313,7 +313,7 @@ namespace GarçomDoKitts
 
             embed.Color = DiscordColor.Chartreuse;
             embed.Title = "Garçom tá ON!";
-            embed.Description = $"**Versão**: {Program.BotVersion}\n**Online desde**: {Program.InitialTime}";
+            embed.Description = $"**Versão**: {Program.BotVersion}\n**Online desde**: {Program.PrintTime(Program.InitialTime)}";
             embed.Description += $"\n\n**Changelog**\n{Program.Changelog}";
             
             await context.Channel.SendMessageAsync(embed.Build());

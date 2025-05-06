@@ -12,6 +12,7 @@ using Newtonsoft.Json;
 using DSharpPlus.Lavalink;
 using DSharpPlus.Entities;
 using System.Reflection;
+using System.Diagnostics;
 
 namespace GarçomDoKitts
 {
@@ -84,7 +85,8 @@ namespace GarçomDoKitts
             await lavalink.ConnectAsync(config);
 
             lavalinkNode = lavalink.ConnectedNodes.Values.First();
-            
+
+            lavalink.NodeDisconnected += Lavalink_NodeDisconnected;            
         }
 
         public async void Loop()
@@ -195,8 +197,12 @@ namespace GarçomDoKitts
             timeoutMs = Program.config.Jukebox_Timeout;
 
             lavalinkPlayback.PlaybackFinished += LavalinkPlayback_PlaybackFinished;
+            lavalinkPlayback.TrackException += LavalinkPlayback_TrackException;
+            lavalinkPlayback.DiscordWebSocketClosed += LavalinkPlayback_DiscordWebSocketClosed;
+            lavalinkPlayback.TrackStuck += LavalinkPlayback_TrackStuck;            
+
             return true;
-        }
+        }        
 
         // Retorna a primeira correspondência de música, se achar uma.
         public async Task<LavalinkTrack> FetchTrack(string link, DiscordChannel canalDeTexto)
@@ -252,6 +258,34 @@ namespace GarçomDoKitts
             await PlayNext(channelMusic);
         }
 
+        private Task Lavalink_NodeDisconnected(LavalinkNodeConnection sender, DSharpPlus.Lavalink.EventArgs.NodeDisconnectedEventArgs args)
+        {
+            Console.WriteLine("$(Jukebox) Lavalink Node Disconnected");
+            ResetConnection();
+            return Task.CompletedTask;
+        }
+
+        private Task LavalinkPlayback_TrackException(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackExceptionEventArgs args)
+        {
+            Console.WriteLine("$(Jukebox) Track Exception");
+            ResetConnection();
+            return Task.CompletedTask;
+        }
+
+        private Task LavalinkPlayback_TrackStuck(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackStuckEventArgs args)
+        {
+            Console.WriteLine("$(Jukebox) Track Stuck");
+            ResetConnection();
+            return Task.CompletedTask;
+        }
+
+        private Task LavalinkPlayback_DiscordWebSocketClosed(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.WebSocketCloseEventArgs args)
+        {
+            Console.WriteLine($"(Jukebox) Lavalink Web Socket Closed");
+            ResetConnection();
+            return Task.CompletedTask;
+        }
+
         public async Task DisconnectAndReset()
         {
             songPaused = false;            
@@ -259,6 +293,10 @@ namespace GarçomDoKitts
             songQueue.Clear();
 
             lavalinkPlayback.PlaybackFinished -= LavalinkPlayback_PlaybackFinished;
+            lavalinkPlayback.TrackException -= LavalinkPlayback_TrackException;
+            lavalinkPlayback.DiscordWebSocketClosed -= LavalinkPlayback_DiscordWebSocketClosed;
+            lavalinkPlayback.TrackStuck -= LavalinkPlayback_TrackStuck;
+            
             await lavalinkPlayback.DisconnectAsync();
         }
 

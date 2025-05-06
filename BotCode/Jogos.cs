@@ -229,14 +229,14 @@ namespace GarçomDoKitts
                         // Time A
                         var vc = await Program.modulo_GenDeCanal.NovoCanalTemporário(Program.GetTime() + new TimeSpan(0, 40, 0), "🟥 Time A"); // Cria o Canal
                         await moverTime(donoDaAção, time.TimeA, vc.canal); // Move todos os jogadores para o canal
-                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time A para {vc.canal}").WithReply(args.Message.Id)));                                                
+                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time A para {vc.canal.Mention}").WithReply(args.Message.Id)));                                                
                     }
                     else if (Time == '1')   
                     {
                         // Time B
                         var vc = await Program.modulo_GenDeCanal.NovoCanalTemporário(Program.GetTime() + new TimeSpan(0, 40, 0), "🟦 Time B"); // Cria o canal
                         await moverTime(donoDaAção, time.TimeB, vc.canal); // Move todos os jogadores para o canal
-                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time B para {vc.canal}").WithReply(args.Message.Id)));                        
+                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time B para {vc.canal.Mention}").WithReply(args.Message.Id)));                        
                     }
                 }
                 else

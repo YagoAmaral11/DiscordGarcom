@@ -43,8 +43,8 @@ namespace GarçomDoKitts
 
         // Runtime
         public static DateTime InitialTime;
-        public const string BotVersion = "0.22";
-        public const string Changelog = "- Adicionado botão para mover membros para canal de personalizada quando um time for sorteado pelo comando fastPerso\n- Comandos para mover usuários entre calls";
+        public const string BotVersion = "0.23";
+        public const string Changelog = "- Correção de erros de digitação\n- Maior estabilidade para a Jukebox";
 
 
         // Main
