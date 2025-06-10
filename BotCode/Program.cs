@@ -32,7 +32,7 @@ namespace GarçomDoKitts
 
         // Timers
         public static Timer mainTimer;
-        public static Timer logTimer;
+        public static Timer longTimer;
 
         // Módulos
         public static Frases modulo_Frases = new();      
@@ -40,12 +40,18 @@ namespace GarçomDoKitts
         public static Jogos modulo_Jogos = new();        
         public static Jukebox modulo_Jukebox = new();        
         public static GerenciadorDeCanal modulo_GenDeCanal = new();
+        public static BotConsole console = new();
 
         // Runtime
         public static DateTime InitialTime;
-        public const string BotVersion = "0.23";
-        public const string Changelog = "- Correção de erros de digitação\n- Maior estabilidade para a Jukebox";
 
+#if DEBUG
+        public const string BotVersion = "DEBUGGING";
+        public const string Changelog = "- Em Testagem";
+#else
+        public const string BotVersion = "0.24";
+        public const string Changelog = "- Patches e Bugfixes\n- Maior estabilidade para a Jukebox\nConsole melhorado";
+#endif
 
         // Main
         private static async Task Main(string[] args)
@@ -161,12 +167,15 @@ namespace GarçomDoKitts
             mainTimer.Enabled = true;
             mainTimer.Elapsed += Loop;
 
-            // Timer Secundário
+            // Timer secundário
             Console.WriteLine("(Program) Inicializando timer secundário");
-            logTimer = new Timer(config.Timers_LogTimerMs);
-            logTimer.AutoReset = true;
-            logTimer.Enabled = true;
-            logTimer.Elapsed += LogLoop;
+            longTimer = new Timer(1000 * 60);
+            longTimer.AutoReset = true;
+            longTimer.Enabled = true;
+            longTimer.Elapsed += LongLoop;
+
+            // Inicializa o console personalizado
+            console = new();            
 
             // Outros
             taskDoneList = await DataIO.Load(DataIO.TaskDonePath, typeof(TaskDone)) as TaskDone;
@@ -263,28 +272,20 @@ namespace GarçomDoKitts
         }
 
 
-        // Loop
+        // Loops
         private static async void Loop(object sender, ElapsedEventArgs e)
         {
-            if (config.Log_Ticks)
-            {
-                Console.WriteLine($"(Program) Bot Ticking in {GetTime()}");                
-            }
-
+            console.ConsoleTick();
             await modulo_Frases.Loop();
             await modulo_Backuper.Loop();
             modulo_Jukebox.Loop();
-            modulo_GenDeCanal.Loop();
+            modulo_GenDeCanal.Loop();            
         }
 
-        private static void LogLoop(object sender, ElapsedEventArgs e)
+        private static async void LongLoop(object sender, ElapsedEventArgs e)
         {
-            if (!config.Log_LogTicks)
-                return;
-
-            Console.WriteLine($"(Program) Bot log ticking in {GetTime()}");
+            console.ConsoleMinute();
         }
-
 
         // Time
         public static DateTime GetTime() => TimeZoneInfo.ConvertTime(DateTime.UtcNow, config.Program_UTC);
@@ -307,4 +308,63 @@ namespace GarçomDoKitts
         }
 
     }           
+
+    public class BotConsole
+    {
+        private int animationProgress;        
+        private int totalConsoleLines;
+
+        public BotConsole()
+        {
+            Init();            
+        }
+
+        private void Init()
+        {            
+            Console.ResetColor();
+            Console.CursorVisible = false;
+            animationProgress = 0;
+            totalConsoleLines = 0;            
+        }
+
+        // Atualiza o console por tick
+        public void ConsoleTick()
+        {                        
+
+        }
+
+        public static void WriteWithColor(string text, ConsoleColor color)
+        {
+            Console.ForegroundColor = color;
+            Console.Write(text);
+            Console.ResetColor();
+        }   
+
+        // Atualiza o console por minuto (Limpa os logs de evento)
+        public void ConsoleMinute()
+        {
+            Console.Clear();
+            WriteWithColor($"(Program) Bot Time: {Program.PrintTimeNow()} (Local Time: {DateTime.UtcNow})\n", ConsoleColor.Magenta);            
+
+            if (Program.modulo_Jukebox.connectedEndpoint != null)
+            {
+                WriteWithColor($"(Lavalink) Online! Connected to endpoint {Program.modulo_Jukebox.connectedEndpoint.Hostname}\n", ConsoleColor.Green);
+            }
+            else
+            {
+                WriteWithColor($"(Lavalink) Offline!\n", ConsoleColor.Red);
+            }
+
+            if (Program.modulo_Jukebox.IsConnected)
+            {
+                WriteWithColor($"(Jukebox) Connected to {Program.modulo_Jukebox.lavalinkPlayback.Channel.Name}\n", ConsoleColor.Green);
+
+                if (Program.modulo_Jukebox.songCurrent != null)   
+                    WriteWithColor($"(Jukebox) Playing {Program.modulo_Jukebox.songCurrent.Title}\n", ConsoleColor.DarkGray);
+
+                if (Program.modulo_Jukebox.ThereIsQueue)
+                    WriteWithColor($"(Jukebox) With {Program.modulo_Jukebox.songQueue.Count} in queue\n", ConsoleColor.DarkGray);
+            }
+        }
+    }
 }

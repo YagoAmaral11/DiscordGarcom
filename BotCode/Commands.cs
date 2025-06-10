@@ -40,6 +40,26 @@ namespace GarçomDoKitts
             return true;
         }
 
+        [Command("Ping")]
+        public async Task Bot_Ping(CommandContext context)
+        {
+            await Task.Run(() => 
+            {
+                BotConsole.WriteWithColor("(Program) Pinged!\n", ConsoleColor.DarkYellow);
+                context.RespondAsync("Pong!");
+            });
+        }
+
+        [Command("cs")]
+        public async Task Bot_ConsoleStatus(CommandContext context)
+        {
+            await Task.Run(() =>
+            {
+                if (VerifyAdmin(context.User))
+                    Program.console.ConsoleMinute();
+            });
+        }
+
         [Command("Ajuda")]
         [Aliases("h", "help", "?")]
         public async Task Ajuda_Geral(CommandContext context)
@@ -185,12 +205,16 @@ namespace GarçomDoKitts
         [Aliases("Kill")]
         public async Task Utility_Close(CommandContext context)
         {
-            if (VerifyAdmin(context.User) == false)
-                return;
+            await Task.Run(() =>
+            {
+                if (VerifyAdmin(context.User) == false)
+                    return;
 
-            Console.WriteLine("(Utility) Shutting Down");
-            Program.Program_Closing(this, EventArgs.Empty);
-            Environment.Exit(0);
+                Console.WriteLine("(Utility) Shutting Down");
+                Program.Program_Closing(this, EventArgs.Empty);
+                Environment.Exit(0);
+            }
+            );            
         }
 
         [Command("MencionarDeafen")]
@@ -662,16 +686,12 @@ namespace GarçomDoKitts
 
             // Pré verificações
             if (!await PreVerify(pedinte, canalDeTexto, canalDeVoz))
-            {
-                return;
-            }
+                    return;
 
             if (!await Program.modulo_Jukebox.VerifyUsage(canalDeVoz, canalDeTexto) || !await Program.modulo_Jukebox.VerifyWhitelist(canalDeTexto))
-            {
                 return;
-            }
 
-            Program.modulo_Jukebox.ResetConnection();
+            await Program.modulo_Jukebox.ChangeConnection();
         }
 
         [Command("+10")]

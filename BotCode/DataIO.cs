@@ -84,13 +84,8 @@ namespace GarçomDoKitts.configs
         public CultureInfo Program_LocalCulture { get; set; }
         public ulong Program_AdminID { get; set; }
 
-        // logs
-        public bool Log_Ticks { get; set; } // Se os ticks principais do bot devem ser logados
-        public bool Log_LogTicks { get; set; } // Se os ticks de Logging (ticks secundários) devem ser logados
-
         // Timer
-        public float Timers_TickTimerMs { get; set; } // O tempo, em milissegundos, que o loop principal do bot ocorrerá
-        public float Timers_LogTimerMs { get; set; } // O tempo, em milissegundos, que o loop de logging do bot ocorrerá
+        public float Timers_TickTimerMs { get; set; } // O tempo, em milissegundos, que o loop principal do bot ocorrerá        
         
         // Frase Diária
         public int Frases_HoraDeEnvio { get; set; } // O hora do dia que o bot enviará uma frase
@@ -105,13 +100,9 @@ namespace GarçomDoKitts.configs
         // Backuper
         public double Backuper_BackupIntervalMs { get; set; } 
 
-        // Jukebox
-        public string Jukebox_Hostname { get; set; } // Lavalink ip
-        public int Jukebox_Port { get; set; } // Lavalink porta
-        public bool Jukebox_Secured { get; set; } // Lavalink ssl
-        public string Jukebox_Password { get; set; } // Lavalink password
+        // Jukebox        
         public ulong Jukebox_CommandChannel { get; set; } // Canal para receber comandos das músicas
-        public float Jukebox_Timeout { get; set; } // Tempo até o bot desconectar se não tiver ninguém na call
+        public float Jukebox_Timeout { get; set; } // Tempo até o bot desconectar se não tiver ninguém na call        
 
         // Gerenciador De Canais
         public ulong ChannelManager_Categoria { get; set; }
@@ -140,11 +131,7 @@ namespace GarçomDoKitts.configs
             Program_LocalCulture = new CultureInfo("pt-BR"); // Usado para mostrar o tempo certo
             Program_AdminID = 0; // ID do admin, que poderá desligar o bot, etc.
 
-            Log_Ticks = false;   
-            Log_LogTicks = true;
-
-            Timers_TickTimerMs = 100;
-            Timers_LogTimerMs = 1000;
+            Timers_TickTimerMs = 100;            
 
             Frases_HoraDeEnvio = 12;
             Frases_MinsDeEnvio = 0;
@@ -154,10 +141,6 @@ namespace GarçomDoKitts.configs
 
             Backuper_BackupIntervalMs = 30 * 60000; // A cada 30 minutos
 
-            Jukebox_Hostname = "localhost";
-            Jukebox_Port = 2333;
-            Jukebox_Secured = true;
-            Jukebox_Password = "youshallnotpass";
             Jukebox_CommandChannel = 898676291010699264;
             Jukebox_Timeout = 5 * 60 * 1000;
 

@@ -13,6 +13,8 @@ using DSharpPlus.Lavalink;
 using DSharpPlus.Entities;
 using System.Reflection;
 using System.Diagnostics;
+using System.Text.Json;
+using System.IO;
 
 namespace GarçomDoKitts
 {
@@ -20,6 +22,8 @@ namespace GarçomDoKitts
     {
         // Config                
         [JsonIgnore] public static ulong channelWhitelistId => Program.config.Jukebox_CommandChannel;
+        [JsonIgnore] public static List<LavalinkEndpoint> endpoints = new List<LavalinkEndpoint>();
+        [JsonIgnore] public static string endpointsPath = $"{DataIO.DataFolderPath}lavalinks.json";
 
         // Runtime data
         [JsonIgnore] public DiscordChannel channelMusic; // Canal para enviar mensagens de música        
@@ -27,6 +31,7 @@ namespace GarçomDoKitts
         [JsonIgnore] public List<LavalinkTrack> songQueue = new(); // Quais as próximas músicas que devem tocar
         [JsonIgnore] public bool songPaused = false;
 
+        [JsonIgnore] public LavalinkEndpoint connectedEndpoint; // qual endpoint está conectado no momento
         [JsonIgnore] public LavalinkExtension lavalink; // Lavalink desse bot
         [JsonIgnore] public LavalinkNodeConnection lavalinkNode; // Nodo usado nesse server para música
         [JsonIgnore] public float timeoutMs;
@@ -60,50 +65,47 @@ namespace GarçomDoKitts
 
         public async Task Init()
         {
-            ConnectionEndpoint endpoint = new()
-            {
-                Hostname = Program.config.Jukebox_Hostname,
-                Port = Program.config.Jukebox_Port,
-                Secured = Program.config.Jukebox_Secured
-            };
+            JsonDocument json = JsonDocument.Parse(File.ReadAllText(endpointsPath));
+            endpoints = new List<LavalinkEndpoint>();
 
-            LavalinkConfiguration config = new()
+            // Inicializa os endpoints
+            foreach (var ep in json.RootElement.GetProperty("endpoints").EnumerateArray())
             {
-                Password = Program.config.Jukebox_Password,
-                RestEndpoint = endpoint,
-                SocketEndpoint = endpoint                
-            };
+                LavalinkEndpoint e = new(
+                    ep.GetProperty("Hostname").GetString(),
+                    ep.GetProperty("Port").GetInt32(),
+                    ep.GetProperty("SSH").GetBoolean(),
+                    ep.GetProperty("Password").GetString()
+                );
+                endpoints.Add(e);
+            }
             
+            // Inicializa runtime da jukebox
             songCurrent = null;
             songQueue = new();
-
             songPaused = false;
-
             channelMusic = await Program.client.GetChannelAsync(channelWhitelistId);
 
-            lavalink = Program.client.UseLavalink();            
-            await lavalink.ConnectAsync(config);
-
-            lavalinkNode = lavalink.ConnectedNodes.Values.First();
-
-            lavalink.NodeDisconnected += Lavalink_NodeDisconnected;            
+            // Conecta no lavalink
+            lavalink = Program.client.UseLavalink();
+            await Connect();                               
         }
 
         public async void Loop()
         {
             // Sair da call se não tiver ninguém            
             if (IsConnected && lavalinkPlayback.Channel.Users.Count == 1)
-            {                
+            {
                 if (timeoutMs > 0)
                 {
-                    timeoutMs -= Program.config.Timers_TickTimerMs;                    
+                    timeoutMs -= Program.config.Timers_TickTimerMs;
                 }
                 else
                 {
                     Console.WriteLine("(Jukebox) Ninguém na call, desconectando por timeout");
                     await DisconnectAndReset();
                     timeoutMs = Program.config.Jukebox_Timeout;
-                }                
+                }
             }
             else if (IsConnected && lavalinkPlayback.Channel.Users.Count > 1)
             {
@@ -111,32 +113,128 @@ namespace GarçomDoKitts
             }
         }
 
-        public async void ResetConnection()
+
+        // Conecta em algum dos endpoints configurados
+        private async Task<bool> Connect()
         {
+            LavalinkNodeConnection connection = null;
+            int current = 0;
+
+            // Tenta conectar em vários endpoints
+            while (current < endpoints.Count)
+            {
+                connection = await ConnectToEndpoint(endpoints[current]);                
+                
+                if (connection != null)
+                {
+                    lavalinkNode = connection;
+                    connectedEndpoint = endpoints[current]; // salva o endpoint conectado
+
+                    lavalinkNode.GuildConnectionRemoved += LavalinkNode_GuildConnectionRemoved;                              
+
+                    Console.WriteLine($"(Jukebox) Conectado em: {connectedEndpoint.Hostname}");
+                    return true;
+                }
+                else
+                {
+                    current++;
+                }
+            }
+
+            lavalinkNode = null; // nenhum nodo conectado
+            connectedEndpoint = null; // nenhum endpoint conectado  
+            Console.WriteLine("(Jukebox) All nodes did not respond");
+            return false;
+        }
+
+        // Conecta em um host de lavalink
+        private async Task<LavalinkNodeConnection> ConnectToEndpoint(LavalinkEndpoint endpoint)
+        {
+            ConnectionEndpoint e = endpoint.ToConnectionEndpoint();
+            LavalinkNodeConnection con = null;
+
+            LavalinkConfiguration config = new()
+            {
+                Password = endpoint.Password,
+                RestEndpoint = e,
+                SocketEndpoint = e,
+                SocketAutoReconnect = false                
+            };
+
             try
             {
-                ConnectionEndpoint endpoint = new()
-                {
-                    Hostname = Program.config.Jukebox_Hostname,
-                    Port = Program.config.Jukebox_Port,
-                    Secured = Program.config.Jukebox_Secured
-                };
-
-                LavalinkConfiguration config = new()
-                {
-                    Password = Program.config.Jukebox_Password,
-                    RestEndpoint = endpoint,
-                    SocketEndpoint = endpoint
-                };                
-                
-                await lavalink.ConnectAsync(config);
-
-                lavalinkNode = lavalink.ConnectedNodes.Values.First();
+                con = await lavalink.ConnectAsync(config);
             }
-            finally
+            catch (Exception ex)
             {
-            }            
-        }        
+                return null;
+            }
+
+            return con;
+        }
+
+        private async Task<bool> RestoreConnection()
+        {
+            var musicTime = lavalinkPlayback.CurrentState.PlaybackPosition;
+            var discordChannel = lavalinkPlayback.Channel;
+
+            // Resets connection
+            await lavalinkPlayback.StopAsync();
+            await lavalinkNode.StopAsync();
+
+            // Retry connecting
+            await Connect();
+
+            if (lavalinkPlayback != null)
+            {
+                await lavalinkNode.ConnectAsync(discordChannel); // Reconecta no VC
+                await lavalinkPlayback.PlayAsync(songCurrent); // Toca a música que estava tocando
+                await lavalinkPlayback.SeekAsync(musicTime); // Retorna para o tempo que estava tocando
+
+                Console.WriteLine("(Jukebox) Connection Restored");
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("(Jukebox) All of lavalink nodes didnt respond");
+                return false;
+            }
+        }
+
+        public async Task<bool> ChangeConnection()
+        {
+            LavalinkNodeConnection connection = null;
+            int currentConnection = endpoints.IndexOf(connectedEndpoint);
+            int current = 0;
+
+            // Tenta conectar nos endpoints que não sejam o que está conectado no momento
+            while (current < endpoints.Count)
+            {
+                if (current == currentConnection)
+                {
+                    continue;
+                }
+
+                connection = await ConnectToEndpoint(endpoints[current]);
+
+                if (connection != null)
+                {
+                    lavalinkNode = connection;
+                    connectedEndpoint = endpoints[current]; // salva o endpoint conectado
+                    Console.WriteLine($"(Jukebox) Conectado em: {connectedEndpoint.Hostname}");
+                    return true;
+                }
+                else
+                {
+                    current++;
+                }
+            }
+
+            lavalinkNode = null; // nenhum nodo conectado
+            connectedEndpoint = null; // nenhum endpoint conectado  
+            Console.WriteLine("(Jukebox) All nodes did not respond");
+            return false;
+        }
 
         // Retorna verdadeiro se tiver mandando mensagem no canal certo
         public async Task<bool> VerifyWhitelist(DiscordChannel mensagemEnviada)
@@ -185,6 +283,19 @@ namespace GarçomDoKitts
                 return true;
             }
 
+            // Conecta em algum endpoint
+            if (connectedEndpoint == null)
+            {
+                bool tmp = await Connect();
+
+                if (!tmp)
+                {
+                    await canalDeTexto.SendMessageAsync("Nenhum host de lavalink está respondendo. Contate um administrador.");   
+                    return false;
+                }
+            }
+
+            // Conecta no canal de voz do pedinte
             await lavalinkNode.ConnectAsync(canalDeVoz);            
 
             if (lavalinkPlayback == null)
@@ -196,10 +307,11 @@ namespace GarçomDoKitts
             
             timeoutMs = Program.config.Jukebox_Timeout;
 
+            // Playback events
             lavalinkPlayback.PlaybackFinished += LavalinkPlayback_PlaybackFinished;
             lavalinkPlayback.TrackException += LavalinkPlayback_TrackException;
             lavalinkPlayback.DiscordWebSocketClosed += LavalinkPlayback_DiscordWebSocketClosed;
-            lavalinkPlayback.TrackStuck += LavalinkPlayback_TrackStuck;            
+            lavalinkPlayback.TrackStuck += LavalinkPlayback_TrackStuck;                        
 
             return true;
         }        
@@ -228,7 +340,17 @@ namespace GarçomDoKitts
                 return null;
             }
 
-            Console.WriteLine($"(Jukebox) Música encontrada: {busca.Tracks.First().Title}");
+            // Não foram encontradas músicas
+            if (busca.Tracks.Count() == 0)
+            {
+                Console.WriteLine("$(Jukebox) Não forame encontradas músicas. Tocando never gonna give you up de placeholder");
+                return lavalinkNode.Rest.GetTracksAsync("https://www.youtube.com/watch?v=dQw4w9WgXcQ").Result.Tracks.First(); // Rickroll como placeholder
+            }
+            else
+            {
+                Console.WriteLine($"(Jukebox) Música encontrada: {busca.Tracks.First().Title}");
+            }
+                
             return busca.Tracks.First();
         }
 
@@ -250,58 +372,79 @@ namespace GarçomDoKitts
             return embed.Build();
         }
 
+
+
         public async Task LavalinkPlayback_PlaybackFinished(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackFinishEventArgs args)
         {
-            Console.WriteLine("(Jukebox) Música terminada");
-
+            Console.WriteLine("(Jukebox) Música terminada");            
             songCurrent = null;
             await PlayNext(channelMusic);
         }
 
-        private Task Lavalink_NodeDisconnected(LavalinkNodeConnection sender, DSharpPlus.Lavalink.EventArgs.NodeDisconnectedEventArgs args)
+        private async Task LavalinkPlayback_TrackException(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackExceptionEventArgs args)
         {
-            Console.WriteLine("$(Jukebox) Lavalink Node Disconnected");
-            ResetConnection();
-            return Task.CompletedTask;
+            Console.WriteLine($"(Jukebox) Track Exception, {args.Error}");
+            await channelMusic.SendMessageAsync($"Não foi possível tocar essa música ({args.Error})");
+            songCurrent = null;
+            await PlayNext(channelMusic);
+            return;
         }
 
-        private Task LavalinkPlayback_TrackException(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackExceptionEventArgs args)
+        private async Task LavalinkPlayback_TrackStuck(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackStuckEventArgs args)
         {
-            Console.WriteLine("$(Jukebox) Track Exception");
-            ResetConnection();
-            return Task.CompletedTask;
+            Console.WriteLine("$(Jukebox) Track Stuck");            
+            await channelMusic.SendMessageAsync("Infelizmente não foi possível continuar tocando essa música. Tocando a próxima...");
+            songCurrent = null;
+            await PlayNext(channelMusic);
+            return;
         }
 
-        private Task LavalinkPlayback_TrackStuck(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.TrackStuckEventArgs args)
+        private async Task LavalinkPlayback_DiscordWebSocketClosed(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.WebSocketCloseEventArgs args)
         {
-            Console.WriteLine("$(Jukebox) Track Stuck");
-            ResetConnection();
-            return Task.CompletedTask;
+            Console.WriteLine($"(Jukebox) Lavalink Web Socket Closed (Code: {args.Code}), {args.Reason}");
+
+            if (sender.IsConnected)
+            {
+                await RestoreConnection();
+            }            
+
+            return;
         }
 
-        private Task LavalinkPlayback_DiscordWebSocketClosed(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.WebSocketCloseEventArgs args)
+        private async Task LavalinkNode_GuildConnectionRemoved(LavalinkGuildConnection sender, DSharpPlus.Lavalink.EventArgs.GuildConnectionRemovedEventArgs args)
         {
-            Console.WriteLine($"(Jukebox) Lavalink Web Socket Closed");
-            ResetConnection();
-            return Task.CompletedTask;
+            Console.WriteLine("(Jukebox) Bot disconnected");                        
+            await DisconnectAndReset();
+            return;
         }
+
 
         public async Task DisconnectAndReset()
         {
+            // Para as execuções de músicas
             songPaused = false;            
             songCurrent = null;
             songQueue.Clear();
-
-            lavalinkPlayback.PlaybackFinished -= LavalinkPlayback_PlaybackFinished;
-            lavalinkPlayback.TrackException -= LavalinkPlayback_TrackException;
-            lavalinkPlayback.DiscordWebSocketClosed -= LavalinkPlayback_DiscordWebSocketClosed;
-            lavalinkPlayback.TrackStuck -= LavalinkPlayback_TrackStuck;
             
-            await lavalinkPlayback.DisconnectAsync();
+            if (lavalinkPlayback != null)
+            {
+                // Retira eventos de playback
+                lavalinkPlayback.PlaybackFinished -= LavalinkPlayback_PlaybackFinished;
+                lavalinkPlayback.TrackException -= LavalinkPlayback_TrackException;
+                lavalinkPlayback.DiscordWebSocketClosed -= LavalinkPlayback_DiscordWebSocketClosed;
+                lavalinkPlayback.TrackStuck -= LavalinkPlayback_TrackStuck;
+
+                // Disconecta da call
+                await lavalinkPlayback.DisconnectAsync();
+            }
+
+            // Reseta o endpoint
+            await lavalinkNode.StopAsync();
+            connectedEndpoint = null;
+            lavalinkNode.GuildConnectionRemoved -= LavalinkNode_GuildConnectionRemoved;            
         }
 
         public static string PrintTimeSpan(TimeSpan span) => Program.PrintTimeSpan(span);
-
 
 
         public async Task Play(DiscordMember pedinte, DiscordChannel canalDeVoz, DiscordChannel canalDeTexto, string link)
@@ -794,6 +937,25 @@ namespace GarçomDoKitts
 
             songQueue.Clear();
             await canalDeTextoPedinte.SendMessageAsync("Fila da Jukebox limpa");
+        }
+
+
+        public class LavalinkEndpoint(string Hostname, int Port, bool ssh, string key)
+        {
+            public string Hostname { get; set; } = Hostname;    
+            public int Port { get; set; } = Port;
+            public bool SSH { get; set; } = ssh;
+            public string Password { get; set; } = key;
+
+            public ConnectionEndpoint ToConnectionEndpoint()
+            {
+                return new ConnectionEndpoint()
+                {
+                    Hostname = Hostname,
+                    Port = Port,
+                    Secured = SSH
+                };
+            }
         }
 
     }
