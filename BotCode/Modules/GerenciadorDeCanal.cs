@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using DSharpPlus.Extensions;
 using DSharpPlus.Entities;
 using DSharpPlus;
 using System.IO;
@@ -64,43 +65,54 @@ namespace GarçomDoKitts
 
         public async Task<RegistroDeCanal> NovoCanalTemporárioPrivado(DateTime lifespan, DiscordUser pedinte, string nome = "🕙 Canal Temporário")
         {
-            RegistroDeCanal novo = new()
+            RegistroDeCanal registroNovoCanal = new()
             {
                 lifespan = lifespan
             };
 
-            novo.pedinteId = pedinte.Id;
-            novo.pedinte = pedinte;
+            registroNovoCanal.pedinteId = pedinte.Id;
+            registroNovoCanal.pedinte = pedinte;
 
             // Limite de criação por usuário
             if (pedinte != null && VerificarUsuário(pedinte.Id) >= Program.config.ChannelManager_MaxTempPerUser)
             {
                 return null;
             }
+                        
+            DiscordMember channelOwner = await Program.servidor.GetMemberAsync(pedinte.Id);
 
-            DiscordMember member = await Program.servidor.GetMemberAsync(pedinte.Id);            
+            // Cria as permissões do canal temporário, válidas para qualquer outros usuários
+            DiscordOverwriteBuilder everyonePermsOverwrites = new(Program.servidor.EveryoneRole);
 
-            DiscordOverwriteBuilder everyone = new(Program.servidor.EveryoneRole);
+            DiscordPermissions everyonePermissions = new()
+            {
+                DiscordPermission.SendMessages,
+                DiscordPermission.UseVoiceActivity
+            };
 
-            everyone.Deny(Permissions.SendMessages);
-            everyone.Deny(Permissions.UseVoice);
+            everyonePermsOverwrites.Deny(everyonePermissions);
 
-            DiscordOverwriteBuilder owner = new(member);
+            // Cria as permissões do canal temporário, válidas para o criador do canal
+            DiscordOverwriteBuilder channelOwnerPermsOverwrites = new(channelOwner);
 
-            owner.For(member);
-            owner.Allow(Permissions.UseVoice);
-            owner.Allow(Permissions.MoveMembers);            
+            DiscordPermissions ownerPermissions = new()
+            {
+                DiscordPermission.UseVoiceActivity,
+                DiscordPermission.MoveMembers
+            };
+            
+            channelOwnerPermsOverwrites.Allow(ownerPermissions);            
 
-            IEnumerable<DiscordOverwriteBuilder> overwrites = [everyone, owner];
-
+            // Cria o canal temporário com as permissões acima
+            IEnumerable<DiscordOverwriteBuilder> overwrites = [everyonePermsOverwrites, channelOwnerPermsOverwrites];
             DiscordChannel createdChannel = await Program.servidor.CreateVoiceChannelAsync(TemplateDeNome + nome, CategoriaCanaisTemp, overwrites: overwrites);
 
-            novo.canal = createdChannel;
-            novo.canalId = createdChannel.Id;
+            registroNovoCanal.canal = createdChannel;
+            registroNovoCanal.canalId = createdChannel.Id;
 
-            canaisTemporários.Add(novo);
+            canaisTemporários.Add(registroNovoCanal);
 
-            return novo;
+            return registroNovoCanal;
         }
 
         // Verifica quantos canais temporarios o usuário enviado criou
@@ -123,10 +135,10 @@ namespace GarçomDoKitts
             if (!regCanal.Initialized)
                 await regCanal.Init();
 
-            if (Program.servidor.GetChannel(regCanal.canalId) == null)
+            if (Program.servidor.GetChannelAsync(regCanal.canalId) == null)
                 return;
 
-            if (regCanal.canal.Type == ChannelType.Voice && regCanal.canal.Users.Count == 0)
+            if (regCanal.canal.Type == DiscordChannelType.Voice && regCanal.canal.Users.Count == 0)
             {
                 canaisTemporários.Remove(regCanal);
                 await regCanal.canal.DeleteAsync("Removendo canal temporário");                
@@ -197,7 +209,7 @@ namespace GarçomDoKitts
             [JsonIgnore] public DiscordUser pedinte = null;
 
             [JsonIgnore] public bool Initialized => canal != null && pedinte != null;
-            [JsonIgnore] public bool IsValid => Program.servidor.GetChannel(canalId) != null;
+            [JsonIgnore] public bool IsValid => Program.servidor.GetChannelAsync(canalId) != null;
 
             public async Task Init()
             {

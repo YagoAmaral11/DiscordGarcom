@@ -44,6 +44,10 @@ namespace GarçomDoKitts
 
             fraseDoDiaEnviada = false;
 
+            // Event subscribing
+            Program.OnMessageCreated += MessageCreated;
+            Program.OnMessageDeleted += MessageDeleted;
+
             if (Program.config.Frases_totalInicial < 0)
             {
                 if (!File.Exists(DataPath))
@@ -150,8 +154,8 @@ namespace GarçomDoKitts
             Console.WriteLine("(FraseDoDia) Construindo mensagem para envio");
 
             DiscordEmbedBuilder embedBuilder = new DiscordEmbedBuilder();
-            embedBuilder.Title = "Frase do Dia";
-            embedBuilder.Color = new Optional<DiscordColor>(new DiscordColor("d619bd"));
+            embedBuilder.Title = "Frase do Dia";            
+            embedBuilder.Color = new DiscordColor("d619bd");
             embedBuilder.Footer = new DiscordEmbedBuilder.EmbedFooter();
             embedBuilder.Footer.Text = $"Frase cunhada por {fraseDoDia.Author.Username}";
             embedBuilder.Footer.IconUrl = fraseDoDia.Author.AvatarUrl;
@@ -170,8 +174,10 @@ namespace GarçomDoKitts
         }
 
         // Serve para escolher a frase do dia
+        // TODO: Consertar problemas de, quando a API não responder com 100 mensagens (der problema de rate limit), o bot pode travar
+        // TODO: Separar o fetch de uma mensagem específica em uma função separada, para que ela possa ser reutilizada; No momento o mesmo código é reutilizado em vários lugares diferentes.        
         public async Task Choose()
-        {
+        {            
             Console.WriteLine($"(FraseDoDia) Escolhendo um número aleatório para a frase do dia");
 
             int indexDaFrase = random.Next(0, quantiaDeFrases);
@@ -181,16 +187,28 @@ namespace GarçomDoKitts
             if (indexDaFrase < 100)
             {
                 // Frase é uma das 100 primeiras
-                var frases = await canalDeFrases.GetMessagesAsync(100);
+                List<DiscordMessage> tmp = new();
+                await foreach (var message in canalDeFrases.GetMessagesAsync(100))
+                {
+                    tmp.Add(message);
+                }
+                IReadOnlyList<DiscordMessage> frases = tmp.AsReadOnly();
+                
                 fraseDoDia = frases[indexDaFrase];
             }
             else
             {
                 // Frase é depois das 100 primeiras
-
                 IReadOnlyList<DiscordMessage> frases = null;
+
                 // pega a primeira mensagem para servir de base
-                var primeirasMsgs = await canalDeFrases.GetMessagesAsync(100);
+                List<DiscordMessage> tmp = new();
+                await foreach (var message in canalDeFrases.GetMessagesAsync(100))
+                {
+                    tmp.Add(message);
+                }
+                IReadOnlyList<DiscordMessage> primeirasMsgs = tmp.AsReadOnly();
+                
                 DiscordMessage msgPivot = primeirasMsgs[99];
                 int currentIndex = indexDaFrase; // usado para pegar a mensagens anteriores
 
@@ -198,7 +216,14 @@ namespace GarçomDoKitts
                 while (currentIndex > 99)
                 {
                     await Task.Delay(300);
-                    frases = await canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100);
+
+                    List<DiscordMessage> tmp2 = new();
+                    await foreach (var message in canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100))
+                    {
+                        tmp2.Add(message);
+                    }
+                    frases = tmp2.AsReadOnly();
+                    
                     currentIndex -= 100;
                     msgPivot = frases[99];
                 }
@@ -217,7 +242,12 @@ namespace GarçomDoKitts
             int quantia = 0;
             bool cont = true;
 
-            IReadOnlyList<DiscordMessage> frases = await canalDeFrases.GetMessagesAsync(100);
+            List<DiscordMessage> tmp = new();
+            await foreach (var message in canalDeFrases.GetMessagesAsync(100))
+            {
+                tmp.Add(message);
+            }
+            IReadOnlyList<DiscordMessage> frases = tmp.AsReadOnly();            
             DiscordMessage anchor = frases[0];
 
             quantia += frases.Count;
@@ -232,8 +262,13 @@ namespace GarçomDoKitts
             }
 
             while (cont)
-            {                
-                frases = await canalDeFrases.GetMessagesBeforeAsync(anchor.Id, 100);
+            {
+                List<DiscordMessage> tmp2 = new();
+                await foreach (var message in canalDeFrases.GetMessagesBeforeAsync(anchor.Id, 100))
+                {
+                    tmp2.Add(message);
+                }
+                frases = tmp2.AsReadOnly();                
                 quantia += frases.Count;                
 
                 if (frases.Count < 100)
@@ -254,7 +289,8 @@ namespace GarçomDoKitts
         }
 
 
-        public void FrasePossivelmenteDeletada(DiscordClient sender, DSharpPlus.EventArgs.MessageDeleteEventArgs args)
+        // Servem para atualizar a contagem de frases quando elas são criadas ou deletadas      
+        private void FrasePossivelmenteDeletada(DiscordClient sender, DSharpPlus.EventArgs.MessageDeletedEventArgs args)
         {
             if (args.Channel == canalDeFrases)
             {
@@ -263,13 +299,27 @@ namespace GarçomDoKitts
             }
         }
 
-        public void FrasePossivelmenteCriada(DiscordClient sender, DSharpPlus.EventArgs.MessageCreateEventArgs args)
+        private void FrasePossivelmenteCriada(DiscordClient sender, DSharpPlus.EventArgs.MessageCreatedEventArgs args)
         {
             if (args.Channel == canalDeFrases)
             {
                 quantiaDeFrases++;
                 Console.WriteLine("(Frases) Adicionando uma frase da contagem");
             }
+        }
+
+
+        // Eventos
+        public Task MessageCreated(DiscordClient sender, DSharpPlus.EventArgs.MessageCreatedEventArgs args)
+        {
+            FrasePossivelmenteCriada(sender, args);
+            return Task.CompletedTask;
+        }   
+
+        public Task MessageDeleted(DiscordClient sender, DSharpPlus.EventArgs.MessageDeletedEventArgs args)
+        {
+            FrasePossivelmenteDeletada(sender, args);
+            return Task.CompletedTask;
         }
 
     }

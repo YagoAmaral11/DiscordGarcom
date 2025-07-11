@@ -1,5 +1,4 @@
 ﻿using DSharpPlus;
-using DSharpPlus.CommandsNext;
 using DSharpPlus.Entities;
 using GarçomDoKitts.configs;
 using Newtonsoft.Json;
@@ -10,6 +9,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using DSharpPlus.EventArgs;
 
 namespace GarçomDoKitts
 {
@@ -28,12 +28,19 @@ namespace GarçomDoKitts
         {
             sorteador = new Random();
             Valorant_Mapas = await DataIO.Load(dataPath, typeof(ValorantMapas)) as ValorantMapas;
-            canalDeLobby = Program.servidor.GetChannel(Program.config.Jogos_CanalDeLobby);
+            canalDeLobby = await Program.servidor.GetChannelAsync(Program.config.Jogos_CanalDeLobby);
 
-            Program.client.ComponentInteractionCreated += InteraçãoDeComponente; // Serve para verificar se o usuário clicou em uma interação
+            Program.OnComponentInteractionCreated += OnComponentInteractionCreated; 
         }
 
-        private async Task InteraçãoDeComponente(DiscordClient sender, DSharpPlus.EventArgs.ComponentInteractionCreateEventArgs args)
+        // Events
+        public async Task OnComponentInteractionCreated(DiscordClient sender, ComponentInteractionCreatedEventArgs args)
+        {
+            await InteraçãoDeComponente(sender, args);
+        }
+
+        // Serve para verificar se o usuário clicou em uma interação
+        private async Task InteraçãoDeComponente(DiscordClient sender, ComponentInteractionCreatedEventArgs args)
         {            
             string buttonId = args.Interaction.Data.CustomId;
 
@@ -55,7 +62,7 @@ namespace GarçomDoKitts
 
         public async Task Personalizada_SortearTimes_fast(DiscordMember member, DiscordMessage originalMessage, uint maxPorTime = 5, string[] excludedPlayers = null)
         {
-            DiscordVoiceState voiceState = member.VoiceState; // Serve para ver em qual canal da call está o usuário.
+            DiscordVoiceState voiceState = member.VoiceState; // Serve para ver em qual canal da call está o usuário.            
 
             // Verificações Iniciais
             if (voiceState == null)
@@ -64,7 +71,9 @@ namespace GarçomDoKitts
                 return;
             }
 
-            if (voiceState.Channel.Users.Count < 3)
+            DiscordChannel voiceChatChannel = await voiceState.GetChannelAsync();
+
+            if (voiceChatChannel.Users.Count < 3)
             {
                 await Program.client.SendMessageAsync(originalMessage.Channel, "Devem ter mais de 2 usuários na call para usar esse comando");
                 return;
@@ -75,7 +84,7 @@ namespace GarçomDoKitts
             messageBuilder.WithContent("Sorteando times...");
             await messageBuilder.SendAsync(originalMessage.Channel);            
 
-            List<DiscordMember> jogadores = new(voiceState.Channel.Users);            
+            List<DiscordMember> jogadores = new(voiceChatChannel.Users);            
             List<DiscordMember> timeA = new();
             List<DiscordMember> timeB = new();
             List<DiscordMember> sobra = new();
@@ -195,16 +204,16 @@ namespace GarçomDoKitts
             TimesGerados relatorio = new TimesGerados(member, timeA, timeB, sobra);
             timesGerados.Add(relatorio);
 
-            // Botões            
-            DiscordButtonComponent moverTimeA = new(DSharpPlus.ButtonStyle.Danger, $"{moverTimeButton}0;{relatorio.UUID}", "Mover Time A");
-            DiscordButtonComponent moverTimeB = new(DSharpPlus.ButtonStyle.Primary, $"{moverTimeButton}1;{relatorio.UUID}", "Mover Time B");
-            messageBuilder.AddComponents(moverTimeA, moverTimeB);
+            // Botões                        
+            DiscordButtonComponent moverTimeA = new(DiscordButtonStyle.Danger, $"{moverTimeButton}0;{relatorio.UUID}", "Mover Time A");
+            DiscordButtonComponent moverTimeB = new(DiscordButtonStyle.Primary, $"{moverTimeButton}1;{relatorio.UUID}", "Mover Time B");
+            messageBuilder.AddActionRowComponent(moverTimeA, moverTimeB);               
 
             await messageBuilder.WithReply(originalMessage.Id).SendAsync(originalMessage.Channel);
             await originalMessage.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
         }        
 
-        public async Task Personalizada_MoverTimes(string timeGeradoUUID, char Time, DSharpPlus.EventArgs.ComponentInteractionCreateEventArgs args)
+        public async Task Personalizada_MoverTimes(string timeGeradoUUID, char Time, ComponentInteractionCreatedEventArgs args)
         {
             DiscordMember donoDaAção = await Program.servidor.GetMemberAsync(args.User.Id);
             TimesGerados time = null;
@@ -229,26 +238,26 @@ namespace GarçomDoKitts
                         // Time A
                         var vc = await Program.modulo_GenDeCanal.NovoCanalTemporário(Program.GetTime() + new TimeSpan(0, 40, 0), "🟥 Time A"); // Cria o Canal
                         await moverTime(donoDaAção, time.TimeA, vc.canal); // Move todos os jogadores para o canal
-                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time A para {vc.canal.Mention}").WithReply(args.Message.Id)));                                                
+                        await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time A para {vc.canal.Mention}").WithReply(args.Message.Id)));                                                
                     }
                     else if (Time == '1')   
                     {
                         // Time B
                         var vc = await Program.modulo_GenDeCanal.NovoCanalTemporário(Program.GetTime() + new TimeSpan(0, 40, 0), "🟦 Time B"); // Cria o canal
                         await moverTime(donoDaAção, time.TimeB, vc.canal); // Move todos os jogadores para o canal
-                        await args.Interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time B para {vc.canal.Mention}").WithReply(args.Message.Id)));                        
+                        await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent($"Movendo Time B para {vc.canal.Mention}").WithReply(args.Message.Id)));                        
                     }
                 }
                 else
                 {
                     // Usuário inválido
-                    await args.Interaction.CreateResponseAsync(DSharpPlus.InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent("Somente quem sorteou o time pode mover os jogadores. Peça para ele tentar!").WithReply(args.Message.Id)));
+                    await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent("Somente quem sorteou o time pode mover os jogadores. Peça para ele tentar!").WithReply(args.Message.Id)));
                 }
             }
             else
             {
                 // Time não existe mais
-                await args.Interaction.CreateResponseAsync(DSharpPlus.InteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent("Infelizmente esse time não é mais válido. Crie outro e tente novamente.").WithReply(args.Message.Id)));
+                await args.Interaction.CreateResponseAsync(DiscordInteractionResponseType.ChannelMessageWithSource, new DiscordInteractionResponseBuilder(new DiscordMessageBuilder().WithContent("Infelizmente esse time não é mais válido. Crie outro e tente novamente.").WithReply(args.Message.Id)));
             }            
 
         }        
@@ -256,26 +265,30 @@ namespace GarçomDoKitts
         private async Task moverTime(DiscordMember sorteador, IReadOnlyList<DiscordMember> jogadoresDoTime, DiscordChannel destinoVC)
         {
             foreach (var jogador in jogadoresDoTime)
-            {
-                if (jogador.VoiceState != null && jogador.VoiceState.Channel.Guild == Program.servidor)
+            {                
+                DiscordChannel playerChannel = await jogador.VoiceState.GetChannelAsync();
+
+                if (jogador.VoiceState != null)
                 {
-                    if (jogador.VoiceState.Channel == canalDeLobby || sorteador.Permissions.HasPermission(Permissions.MoveMembers))
+                    if (playerChannel.Guild == Program.servidor)
                     {
-                        await destinoVC.PlaceMemberAsync(jogador);
-                    }
-                    else
-                    {
-                        await destinoVC.SendMessageAsync($"Não foi possível mover o jogador {jogador.Mention}, já que {sorteador.Mention} não tem permissões para mover usuários e {jogador.Mention} não está em {canalDeLobby.Mention}");
+                        if (playerChannel == canalDeLobby || sorteador.Permissions.HasPermission(DiscordPermission.MoveMembers))
+                        {
+                            await destinoVC.PlaceMemberAsync(jogador);
+                            continue;
+                        }
+                        else
+                        {
+                            await destinoVC.SendMessageAsync($"Não foi possível mover o jogador {jogador.Mention}, já que {sorteador.Mention} não tem permissões para mover usuários e {jogador.Mention} não está em {canalDeLobby.Mention}");
+                            continue;
+                        }
                     }
                 }
-                else
-                {
-                    await destinoVC.SendMessageAsync($"Não foi possível mover o jogador {jogador.Mention} pois ele não está conectado em uma call que tenho acesso");
-                }
+                await destinoVC.SendMessageAsync($"Não foi possível mover o jogador {jogador.Mention} pois ele não está conectado em uma call que tenho acesso");
             }
         }
 
-        public async Task<ValorantMapa> Valorant_SortearMapa(bool OnlyOnRotation = true)
+        public ValorantMapa Valorant_SortearMapa(bool OnlyOnRotation = true)
         {
             while (true)
             {

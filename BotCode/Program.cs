@@ -1,7 +1,6 @@
 ﻿using DSharpPlus;
-using DSharpPlus.CommandsNext;
-using DSharpPlus.Lavalink;
 using DSharpPlus.Entities;
+using DSharpPlus.EventArgs;
 using GarçomDoKitts.configs;
 using System;
 using System.Collections.Generic;
@@ -10,6 +9,10 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Linq;
+using DSharpPlus.Commands;
+using DSharpPlus.Commands.Processors.TextCommands;
+using DSharpPlus.Commands.Processors.TextCommands.Parsing;
+using DSharpPlus.Commands.Processors.SlashCommands;
 
 namespace GarçomDoKitts
 {
@@ -23,12 +26,7 @@ namespace GarçomDoKitts
 
         // Discord APIs, Channels, Server, etc.
         public static DiscordClient client;
-        public static DiscordGuild servidor;
-
-        // Discord Configs/Commands creation
-        public static CommandsNextExtension commands;
-        public static DiscordConfiguration discordConfiguration;
-        public static CommandsNextConfiguration commandsNextConfiguration;
+        public static DiscordGuild servidor;       
 
         // Timers
         public static Timer mainTimer;
@@ -42,16 +40,20 @@ namespace GarçomDoKitts
         public static GerenciadorDeCanal modulo_GenDeCanal = new();
         public static BotConsole console = new();
 
+        // Events
+        public delegate Task MessageCreatedDelegate(DiscordClient sender, MessageCreatedEventArgs args);
+        public static event MessageCreatedDelegate OnMessageCreated;
+
+        public delegate Task MessageDeletedDelegate(DiscordClient sender, MessageDeletedEventArgs args);    
+        public static event MessageDeletedDelegate OnMessageDeleted;
+
+        public delegate Task ComponentInteractionCreatedDelegate(DiscordClient sender, ComponentInteractionCreatedEventArgs args);
+        public static event ComponentInteractionCreatedDelegate OnComponentInteractionCreated;
+
         // Runtime
         public static DateTime InitialTime;
-
-#if DEBUG
-        public const string BotVersion = "DEBUGGING";
-        public const string Changelog = "- Em Testagem";
-#else
-        public const string BotVersion = "0.24";
-        public const string Changelog = "- Patches e Bugfixes\n- Maior estabilidade para a Jukebox\nConsole melhorado";
-#endif
+        public const string BotVersion = "0.3";
+        public const string Changelog = "- Melhorias significativas no Source Code\n- Migração da biblioteca de Jukebox\n- Adicionado comandos do Discord\n-Adicionado novos comandos";
 
         // Main
         private static async Task Main(string[] args)
@@ -70,10 +72,12 @@ namespace GarçomDoKitts
             }            
 
             await DataIO.LoadConfig(); // Carrega configs
-            await InitDiscordConfig(); // Inicia o client do Discord para o bot            
-            await InitCommands(); // Faz com que os comandos funcionem (eles precisam ser registrados primeiro)
-            await client.ConnectAsync(); // Conecta no Discord; Ao bot se conectar, a função de inicializar executa
-            await InitModules(); // Inicializa os módulos (Carrega informações, etc.)            
+            InitDiscordClient(); // Inicia o client do Discord para o bot                        
+
+            await client.ConnectAsync(); 
+            servidor = client.Guilds.Values.First(); // Seleciona o servidor que será conectado no bot
+
+            await InitModules();       
             InitialTime = GetTime();
 
             await Task.Delay(-1);
@@ -102,44 +106,46 @@ namespace GarçomDoKitts
 
 
         // Init
-        private static Task InitDiscordConfig()
+        private static void InitDiscordClient()
         {
             Console.WriteLine("(Program) Inicializando client e configurações do discord");
 
-            discordConfiguration = new DiscordConfiguration()
+            // Inicializa as configurações do DiscordClient
+            DiscordClientBuilder clientBuilder = DiscordClientBuilder.CreateDefault(token.Token, DiscordIntents.All);
+
+            clientBuilder.ConfigureGatewayClient(gateway =>
             {
-                Intents = DiscordIntents.All,
-                Token = token.Token,
-                TokenType = TokenType.Bot,
-                AutoReconnect = true
-            };
+                gateway.AutoReconnect = true;                
+            });
 
-            client = new DiscordClient(discordConfiguration);
+            // Inicializa os eventos do DiscordClient 
+            clientBuilder.ConfigureEventHandlers(tmp =>
+                {
+                    tmp.HandleMessageCreated(Client_MessageCreated);
+                    tmp.HandleMessageDeleted(Client_MessageDeleted);
+                    tmp.HandleComponentInteractionCreated(Client_ComponentInteractionCreated);
+                }
+            );
 
-            commandsNextConfiguration = new CommandsNextConfiguration()
-            {
-                StringPrefixes = config.Prefixs.ToArray(),
-                EnableMentionPrefix = true,
-                EnableDefaultHelp = false,
-                EnableDms = true
-            };
+            // Inicializa os comandos             
+            clientBuilder.UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) =>
+                {
+                    TextCommandProcessor textCommandProcessor = new TextCommandProcessor(new()
+                        {
+                            PrefixResolver = new DefaultPrefixResolver(false, "garc", "g", "Garc", "G").ResolvePrefixAsync
+                        }
+                    );                                                           
 
-            commands = client.UseCommandsNext(commandsNextConfiguration);
-            client.Ready += Client_Ready;
+                    extension.AddProcessor(textCommandProcessor);
+                    extension.AddCommands([typeof(Commands)]);
+                }
+            );
+
+            // Constrói o client do Discord
+            client = clientBuilder.Build();            
 
             Console.WriteLine("(Program) Inicialização finalizada");
-
-            return Task.CompletedTask;
-        }
-
-        private static Task InitCommands()
-        {
-            Console.WriteLine("(Program) Registrando comandos");
-
-            commands.RegisterCommands<Commands>();
-
-            Console.WriteLine("(Program) Comandos registrados");
-            return Task.CompletedTask;
+            return;
         }
 
         public async static Task InitModules()
@@ -155,10 +161,7 @@ namespace GarçomDoKitts
 
             // Eventos
             Console.WriteLine("(Program) Inicializando Eventos");
-            client.MessageCreated += Client_MessageCreated;
-            client.MessageDeleted += Client_MessageDeleted;
-            AppDomain.CurrentDomain.ProcessExit += Program_Closing;
-            client.ComponentInteractionCreated += Client_ComponentInteractionCreated;
+            AppDomain.CurrentDomain.ProcessExit += Program_Closing;            
 
             // Timer Principal
             Console.WriteLine("(Program) Inicializando timer principal");
@@ -185,49 +188,26 @@ namespace GarçomDoKitts
 
 
         // Events
-        private static Task Client_Ready(DiscordClient sender, DSharpPlus.EventArgs.ReadyEventArgs args)
-        {
-            Console.WriteLine("(DiscordClient) Client inicializado");
-                       
-            servidor = client.Guilds.Values.First();
-
-            return Task.CompletedTask;
-        }
-
-        private static Task Client_MessageDeleted(DiscordClient sender, DSharpPlus.EventArgs.MessageDeleteEventArgs args)
-        {
-            Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem deletada");
-
-            modulo_Frases.FrasePossivelmenteDeletada(sender, args);
-
-            return Task.CompletedTask;
-        }
-
-        private static Task Client_MessageCreated(DiscordClient sender, DSharpPlus.EventArgs.MessageCreateEventArgs args)
+        private static Task Client_MessageCreated(DiscordClient sender, MessageCreatedEventArgs args)
         {
             Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem criada");
-
-            modulo_Frases.FrasePossivelmenteCriada(sender, args);
-
+            OnMessageCreated?.Invoke(sender, args);
             return Task.CompletedTask;
         }
 
-        private static Task Client_ComponentInteractionCreated(DiscordClient sender, DSharpPlus.EventArgs.ComponentInteractionCreateEventArgs args)
+        private static Task Client_MessageDeleted(DiscordClient sender, MessageDeletedEventArgs args)
+        {
+            Console.WriteLine("(DiscordClient) Evento Acionado: Mensagem deletada");
+            OnMessageDeleted?.Invoke(sender, args);
+            return Task.CompletedTask;
+        }        
+
+        private static Task Client_ComponentInteractionCreated(DiscordClient sender, ComponentInteractionCreatedEventArgs args)
         {
             Console.WriteLine($"(Program) Interação criada: {args.Interaction.Data.CustomId} criada por {args.User.Username} ({args.User.Id})");
-
+            OnComponentInteractionCreated?.Invoke(sender, args);
             return Task.CompletedTask;
         }
-
-        public static void Program_Closing(object sender, EventArgs e)
-        {
-            Console.WriteLine("(Program) Bot finalizando");
-            
-            SaveModules();            
-            
-            Console.WriteLine("(Program) Bot finalizado");
-        }
-
 
         // Others
         public static Task SaveModules()
@@ -271,6 +251,15 @@ namespace GarçomDoKitts
             return taskDoneList.Msgs[0].Msg;
         }
 
+        public static void Program_Closing(object sender, EventArgs e)
+        {
+            Console.WriteLine("(Program) Bot finalizando");
+
+            SaveModules();
+
+            Console.WriteLine("(Program) Bot finalizado");
+        }
+
 
         // Loops
         private static async void Loop(object sender, ElapsedEventArgs e)
@@ -284,7 +273,7 @@ namespace GarçomDoKitts
 
         private static async void LongLoop(object sender, ElapsedEventArgs e)
         {
-            console.ConsoleMinute();
+            await Task.Run(() => console.ConsoleMinute());            
         }
 
         // Time
@@ -307,64 +296,5 @@ namespace GarçomDoKitts
             }
         }
 
-    }           
-
-    public class BotConsole
-    {
-        private int animationProgress;        
-        private int totalConsoleLines;
-
-        public BotConsole()
-        {
-            Init();            
-        }
-
-        private void Init()
-        {            
-            Console.ResetColor();
-            Console.CursorVisible = false;
-            animationProgress = 0;
-            totalConsoleLines = 0;            
-        }
-
-        // Atualiza o console por tick
-        public void ConsoleTick()
-        {                        
-
-        }
-
-        public static void WriteWithColor(string text, ConsoleColor color)
-        {
-            Console.ForegroundColor = color;
-            Console.Write(text);
-            Console.ResetColor();
-        }   
-
-        // Atualiza o console por minuto (Limpa os logs de evento)
-        public void ConsoleMinute()
-        {
-            Console.Clear();
-            WriteWithColor($"(Program) Bot Time: {Program.PrintTimeNow()} (Local Time: {DateTime.UtcNow})\n", ConsoleColor.Magenta);            
-
-            if (Program.modulo_Jukebox.connectedEndpoint != null)
-            {
-                WriteWithColor($"(Lavalink) Online! Connected to endpoint {Program.modulo_Jukebox.connectedEndpoint.Hostname}\n", ConsoleColor.Green);
-            }
-            else
-            {
-                WriteWithColor($"(Lavalink) Offline!\n", ConsoleColor.Red);
-            }
-
-            if (Program.modulo_Jukebox.IsConnected)
-            {
-                WriteWithColor($"(Jukebox) Connected to {Program.modulo_Jukebox.lavalinkPlayback.Channel.Name}\n", ConsoleColor.Green);
-
-                if (Program.modulo_Jukebox.songCurrent != null)   
-                    WriteWithColor($"(Jukebox) Playing {Program.modulo_Jukebox.songCurrent.Title}\n", ConsoleColor.DarkGray);
-
-                if (Program.modulo_Jukebox.ThereIsQueue)
-                    WriteWithColor($"(Jukebox) With {Program.modulo_Jukebox.songQueue.Count} in queue\n", ConsoleColor.DarkGray);
-            }
-        }
-    }
+    }               
 }

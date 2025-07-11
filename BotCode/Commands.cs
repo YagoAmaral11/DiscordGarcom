@@ -1,7 +1,6 @@
-﻿using DSharpPlus.CommandsNext;
-using DSharpPlus.CommandsNext.Attributes;
-using DSharpPlus.CommandsNext.Executors;
-using DSharpPlus;
+﻿using DSharpPlus;
+using DSharpPlus.Commands;
+using DSharpPlus.Commands.ArgumentModifiers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,12 +8,13 @@ using System.Text;
 using System.Threading.Tasks;
 using DSharpPlus.Entities;
 using System.Drawing;
+using DSharpPlus.Commands.Trees.Metadata;
 
 namespace GarçomDoKitts
 {
-    public class Commands : BaseCommandModule
+    public class Commands
     {
-
+        // Verifica se o usuário é um administrador do bot
         public static bool VerifyAdmin(DiscordUser author)
         {
             if (author.Id == Program.config.Program_AdminID)
@@ -23,21 +23,33 @@ namespace GarçomDoKitts
         }
 
         // Verifica se o usuário está em um VC e ele é válido
-        public static async Task<bool> PreVerify(DiscordMember pedinte, DiscordChannel canalDeTexto, DiscordChannel canalDeVoz)
+        public static async Task<bool> PreVerify(DiscordMember pedinte, DiscordChannel canalDeTexto, DiscordChannel? canalDeVoz)
         {
-            if (pedinte.VoiceState == null)
+            if (pedinte.VoiceState == null || canalDeVoz == null || canalDeVoz.Type != DiscordChannelType.Voice)
             {
                 await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
                 return false;
             }
-
-            if (canalDeVoz.Type != ChannelType.Voice)
-            {
-                await canalDeTexto.SendMessageAsync("Você deve estar em um canal de voz para usar esse comando");
-                return false;
-            }
-
             return true;
+        }
+
+        // Verifica se o usuário está em um canal de voz e retorna o canal de voz se ele estiver
+        public static async Task<(bool isConnected, DiscordChannel? voiceChannel)> GetVoiceChannel(DiscordMember user)
+        {            
+            if (user.VoiceState != null)
+            {
+                DiscordChannel? vc = await user.VoiceState.GetChannelAsync();
+
+                if (vc != null)
+                {
+                    return (true, vc);  
+                }
+                else
+                {
+                    return (false, null);
+                }
+            }
+            return (false, null);
         }
 
         [Command("Ping")]
@@ -61,7 +73,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Ajuda")]
-        [Aliases("h", "help", "?")]
+        [TextAlias("h", "help", "?")]
         public async Task Ajuda_Geral(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -84,7 +96,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaFrases")]
-        [Aliases("?Frases")]
+        [TextAlias("?Frases")]
         public async Task Ajuda_Frases(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -100,7 +112,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaJukebox")]
-        [Aliases("?Jukebox")]
+        [TextAlias("?Jukebox")]
         public async Task Ajuda_Jukebox(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -131,7 +143,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaPerso")]
-        [Aliases("?Perso", "AjudaPersonalizada", "?Personalizada")]
+        [TextAlias("?Perso", "AjudaPersonalizada", "?Personalizada")]
         public async Task Ajuda_Perso(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -149,7 +161,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaValorant")]
-        [Aliases("?Valorant")]
+        [TextAlias("?Valorant")]
         public async Task Ajuda_Valorant(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -165,7 +177,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaUtil")]
-        [Aliases("?Util")]
+        [TextAlias("?Util")]
         public async Task Ajuda_Utility(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -185,7 +197,7 @@ namespace GarçomDoKitts
         }
 
         [Command("AjudaCanalTemp")]
-        [Aliases("?CanalTemp", "?TempChannel")]
+        [TextAlias("?CanalTemp", "?TempChannel")]
         public async Task Ajuda_ChannelManager(CommandContext context)
         {
             DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
@@ -202,7 +214,7 @@ namespace GarçomDoKitts
 
 
         [Command("Shutdown")]
-        [Aliases("Kill")]
+        [TextAlias("Kill")]
         public async Task Utility_Close(CommandContext context)
         {
             await Task.Run(() =>
@@ -218,12 +230,15 @@ namespace GarçomDoKitts
         }
 
         [Command("MencionarDeafen")]
-        [Aliases("udm", "MentionDeafen", "DeafenMention")]
-        [Cooldown(3, 10, CooldownBucketType.User)]
+        [TextAlias("udm", "MentionDeafen", "DeafenMention")]        
         public async Task Utility_MentionDeafen(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel? canalDeVoz = null;
+
+            if (context.Member.VoiceState != null)
+                canalDeVoz = await context.Member.VoiceState.GetChannelAsync();
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -257,7 +272,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Prefixos")]
-        [Aliases("pfx", "Prefixes")]
+        [TextAlias("pfx", "Prefixes")]
         public async Task Utility_ShowPrefixes(CommandContext context)
         {
             string tmp = "";
@@ -278,25 +293,29 @@ namespace GarçomDoKitts
         }
 
         [Command("Contar")]
-        [Aliases("Count", "VoiceCount", "vcc")]
+        [TextAlias("Count", "VoiceCount", "vcc")]
         public async Task Utility_CountUsersInVoice(CommandContext context)
         {
             DiscordMember sender = context.Member;
             DiscordChannel channel = context.Channel;
 
             DiscordVoiceState voiceState = sender.VoiceState; // Serve para ver em qual canal da call está o usuário.
+            DiscordChannel? voiceChannel = null;
 
-            if (voiceState == null)
+            if (voiceState != null)
+                 voiceChannel = await voiceState.GetChannelAsync();
+
+            if (voiceState == null || voiceChannel == null)
             {
                 await Program.client.SendMessageAsync(channel, "Para usar esse comando você deve estar conectado em um canal de voz");
                 return;
             }
 
-            int All = voiceState.Channel.Users.Count;
+            int All = voiceChannel.Users.Count;
             int Bots = 0;
             bool selfConnected = false;
             
-            foreach (DiscordMember user in voiceState.Channel.Users)
+            foreach (DiscordMember user in voiceChannel.Users)
             {
                 if (user.IsBot)
                     Bots++;
@@ -309,22 +328,22 @@ namespace GarçomDoKitts
             {
                 if (Bots > 1)
                 {
-                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots (contando comigo).");
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceChannel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots (contando comigo).");
                 }
                 else
                 {
-                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - 1} desses são pessoas e o outro sou eu");
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceChannel.Mention}. {All - 1} desses são pessoas e o outro sou eu");
                 }
             }
             else
             {
                 if (Bots > 0)
                 {
-                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceState.Channel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots.");
+                    await channel.SendMessageAsync($"No total, tem {All} usuários conectados em {voiceChannel.Mention}. {All - Bots} desses são pessoas, {Bots} são bots.");
                 }
                 else
                 {
-                    await channel.SendMessageAsync($"No total, tem {All} pessoas conectadas em {voiceState.Channel.Mention}.");
+                    await channel.SendMessageAsync($"No total, tem {All} pessoas conectadas em {voiceChannel.Mention}.");
                 }
             }
 
@@ -344,7 +363,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Mover")]
-        [Aliases("Mv", "Move")]
+        [TextAlias("Mv", "Move")]
         public async Task Utility_MoveVc(CommandContext context, string MençãoCanalDestino, string MençãoCanalParaMover)
         {
             string channelTargetId = MençãoCanalDestino.Substring(MençãoCanalDestino.IndexOf('#') + 1, MençãoCanalDestino.Length - 3);
@@ -352,12 +371,12 @@ namespace GarçomDoKitts
 
             DiscordMember member = await Program.servidor.GetMemberAsync(context.User.Id);
 
-            if (member.Permissions.HasPermission(Permissions.MoveMembers) || member.Permissions.HasPermission(Permissions.Administrator))
+            if (member.Permissions.HasPermission(DiscordPermission.MoveMembers) || member.Permissions.HasPermission(DiscordPermission.Administrator))
             {
-                DiscordChannel target = Program.servidor.GetChannel(ulong.Parse(channelTargetId));
-                DiscordChannel initial = Program.servidor.GetChannel(ulong.Parse(channelInitialId));
+                DiscordChannel target = await Program.servidor.GetChannelAsync(ulong.Parse(channelTargetId));
+                DiscordChannel initial = await Program.servidor.GetChannelAsync(ulong.Parse(channelInitialId));
 
-                if (target.Type != ChannelType.Voice || initial.Type != ChannelType.Voice)
+                if (target.Type != DiscordChannelType.Voice || initial.Type != DiscordChannelType.Voice)
                 {
                     await context.RespondAsync("Algum desses canais não são canais de audio");
                     return;
@@ -376,7 +395,7 @@ namespace GarçomDoKitts
 
 
         [Command("FraseDiaria")]
-        [Aliases("fd", "FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase")]
+        [TextAlias("fd", "FraseDoDia" , "FraseDiária", "FraseDaily", "DailyFrase")]
         public async Task Frases_mostrarFrase(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_mostrarFrase) Mostrando a frase diária, pedido por: {context.User.Username} ({context.User.Id})");
@@ -399,7 +418,8 @@ namespace GarçomDoKitts
         }
 
         [Command("FraseAleatoria")]
-        [Aliases("fa", "FraseRandom", "RandomFrase", "FraseAleatória")]
+        [TextAlias("fa", "FraseRandom", "RandomFrase", "FraseAleatória")]
+        // TODO: Refactor this; Smells
         public async Task Frases_fraseAleatoria(CommandContext context)
         {
             Console.WriteLine($"(Command.FraseDoDia_fraseAleatoria) Mostrando uma frase aleatória, pedido por: {context.User.Username} ({context.User.Id})");
@@ -414,14 +434,27 @@ namespace GarçomDoKitts
 
             if (index < 100)
             {
-                var frases = await Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100);
+                List<DiscordMessage> tmp = new();
+                await foreach (var message in Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100))
+                {
+                    tmp.Add(message);
+                }
+                IReadOnlyList<DiscordMessage> frases = tmp.AsReadOnly();
                 frase = frases[index];
             }
             else
             {
+                // Frase é depois das 100 primeiras
                 IReadOnlyList<DiscordMessage> frases = null;
+
                 // pega a primeira mensagem para servir de base
-                var primeirasMsgs = await Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100);
+                List<DiscordMessage> tmp = new();
+                await foreach (var message in Program.modulo_Frases.canalDeFrases.GetMessagesAsync(100))
+                {
+                    tmp.Add(message);
+                }
+                IReadOnlyList<DiscordMessage> primeirasMsgs = tmp.AsReadOnly();
+                
                 DiscordMessage msgPivot = primeirasMsgs[99];
                 int currentIndex = index; // usado para pegar a mensagens anteriores
 
@@ -429,7 +462,14 @@ namespace GarçomDoKitts
                 while (currentIndex > 99)
                 {
                     await Task.Delay(300);
-                    frases = await Program.modulo_Frases.canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100);
+
+                    List<DiscordMessage> tmp2 = new();
+                    await foreach (var msg in Program.modulo_Frases.canalDeFrases.GetMessagesBeforeAsync(msgPivot.Id, 100))
+                    {
+                        tmp2.Add(msg);
+                    }
+                    frases = tmp2.AsReadOnly();
+                    
                     currentIndex -= 100;
                     msgPivot = frases[99];
                 }
@@ -443,7 +483,7 @@ namespace GarçomDoKitts
 
             DiscordEmbedBuilder embedBuilder = new DiscordEmbedBuilder();
             embedBuilder.Title = "Frase Aleatória";
-            embedBuilder.Color = new Optional<DiscordColor>(new DiscordColor("6225b8"));
+            embedBuilder.Color = new DiscordColor("6225b8");
             embedBuilder.Footer = new DiscordEmbedBuilder.EmbedFooter();
             embedBuilder.Footer.Text = $"Frase cunhada por {frase.Author.Username}";
             embedBuilder.Footer.IconUrl = frase.Author.AvatarUrl;
@@ -463,7 +503,7 @@ namespace GarçomDoKitts
         }
 
         [Command("FrasesFetch")]
-        [Aliases("ff")]
+        [TextAlias("ff")]
         public async Task Frases_fetch(CommandContext context)
         {
             if (VerifyAdmin(context.User) == false)
@@ -476,9 +516,12 @@ namespace GarçomDoKitts
 
 
         [Command("PersonalizadaRapida")]
-        [Aliases("fp", "PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
+        [TextAlias("fp", "PersonalizadaRápida", "PersoRapida", "PersoRápida", "fastPerso", "fastPersonalizada", "rápidaPersonalizada", "rapidaPersonalizada", "rapidaPerso", "rápidaPerso")]
         public async Task Jogos_PersoFast(CommandContext context)
         {
+            // OBS: O problema aqui é agora como estamos lidando com comandos que podem ser do tipo slash, é possível que 
+            // não exista uma mensagem de texto para o comando, então não podemos usar context.Message
+            // Para contor, devemos alterar o comando subsequente 
             await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message);
         }
 
@@ -501,7 +544,7 @@ namespace GarçomDoKitts
         }
 
         [Command("ValorantMapa")]
-        [Aliases("vlmp", "valmp", "valMap", "ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear")]
+        [TextAlias("vlmp", "valmp", "valMap", "ValorantMap", "ValorantSortearMapa", "ValorantMapSort", "ValorantSortearMap", "ValorantSortearMapas", "ValorantMapaSortear")]
         public async Task Jogos_Valorant_SortearMapa(CommandContext context)
         {
             await Jogos_Valorant_SortearMapa(context, true);
@@ -516,7 +559,7 @@ namespace GarçomDoKitts
 
             await context.Channel.SendMessageAsync("Sorteando um mapa...");
 
-            ValorantMapa mapaEscolhido = await Program.modulo_Jogos.Valorant_SortearMapa(onlyRotation);
+            ValorantMapa mapaEscolhido = Program.modulo_Jogos.Valorant_SortearMapa(onlyRotation);
 
             Console.WriteLine("(Jogos/Valorant) Mapa sorteado");
 
@@ -532,11 +575,16 @@ namespace GarçomDoKitts
         
 
         [Command("Tocar")]
-        [Aliases("p", "Play")]
+        [TextAlias("p", "Play")]
         public async Task Jukebox_Play(CommandContext context, [RemainingText] string link)
         {            
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+            
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -549,11 +597,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Parar")]
-        [Aliases("dc", "Stop", "Disconnect")]
+        [TextAlias("dc", "Stop", "Disconnect")]
         public async Task Jukebox_Stop(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -566,11 +619,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Pausar")]
-        [Aliases("ps", "Pause")]
+        [TextAlias("ps", "Pause")]
         public async Task Jukebox_Pause(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -583,11 +641,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Pular")]
-        [Aliases("skp", "Skip", "Skipar")]
+        [TextAlias("skp", "Skip", "Skipar")]
         public async Task Jukebox_Skip(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -600,7 +663,7 @@ namespace GarçomDoKitts
         }
 
         [Command("Fila")]
-        [Aliases("q", "Lista", "Listar", "Musicas", "Queue", "List", "Ls", "Musics", "Tocando", "Playing")]
+        [TextAlias("q", "Lista", "Listar", "Musicas", "Queue", "List", "Ls", "Musics", "Tocando", "Playing")]
         public async Task Jukebox_QueueShow(CommandContext context)
         {            
             DiscordChannel canalDeTexto = context.Channel;
@@ -609,11 +672,16 @@ namespace GarçomDoKitts
         }
         
         [Command("Remover")]
-        [Aliases("r", "Remove", "FilaRemover", "QueueRemove")]
+        [TextAlias("r", "Remove", "FilaRemover", "QueueRemove")]
         public async Task Jukebox_QueueRemove(CommandContext context, int index)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -626,11 +694,16 @@ namespace GarçomDoKitts
         }
 
         [Command("PularPara")]
-        [Aliases("jmp", "Jump", "SkipTo", "QueueJump", "QueueSkip", "FilaPular")]
+        [TextAlias("jmp", "Jump", "SkipTo", "QueueJump", "QueueSkip", "FilaPular")]
         public async Task Jukebox_QueueSkipTo(CommandContext context, int index)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -643,11 +716,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Próxima")]
-        [Aliases("nxt", "Proxima", "Next", "QueueNext", "FilaProxima", "FilaNext")]
+        [TextAlias("nxt", "Proxima", "Next", "QueueNext", "FilaProxima", "FilaNext")]
         public async Task Jukebox_QueuePriorityNext(CommandContext context, int index)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -660,11 +738,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Adiantar")]
-        [Aliases("qp", "TocarDaFila", "QueuePlay", "PlayQueue")]
+        [TextAlias("qp", "TocarDaFila", "QueuePlay", "PlayQueue")]
         public async Task Jukebox_QueuePriorityPlay(CommandContext context, int index)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -677,11 +760,16 @@ namespace GarçomDoKitts
         }
 
         [Command("JukeboxRC")]
-        [Aliases("jrc")]
+        [TextAlias("jrc")]
         public async Task Jukebox_ResetConnection(CommandContext context)   
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -698,7 +786,12 @@ namespace GarçomDoKitts
         public async Task Jukebox_plus10(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -714,7 +807,12 @@ namespace GarçomDoKitts
         public async Task Jukebox_back10(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -727,11 +825,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Tempo")]
-        [Aliases("tm", "seek")]
+        [TextAlias("tm", "seek")]
         public async Task Jukebox_Seek(CommandContext context, TimeSpan timeSpan)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -744,11 +847,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Reiniciar")]
-        [Aliases("rw", "restart", "rewind")]
+        [TextAlias("rw", "restart", "rewind")]
         public async Task Jukebox_Restart(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -761,11 +869,16 @@ namespace GarçomDoKitts
         }
 
         [Command("LimparFila")]
-        [Aliases("qc", "QueueClear", "QueueReset", "FilaLimpar", "FilaResetar", "FilaReiniciar")]
+        [TextAlias("qc", "QueueClear", "QueueReset", "FilaLimpar", "FilaResetar", "FilaReiniciar")]
         public async Task Jukebox_QueueClear(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -778,11 +891,16 @@ namespace GarçomDoKitts
         }
 
         [Command("Embaralhar")]
-        [Aliases("jshf", "Shuffle", "FilaEmbaralhar", "FilaAleatorizar", "QueueShuffle", "QueueRandomize")]
+        [TextAlias("jshf", "Shuffle", "FilaEmbaralhar", "FilaAleatorizar", "QueueShuffle", "QueueRandomize")]
         public async Task Jukebox_Shuffle(CommandContext context)
         {
             DiscordMember pedinte = context.Member;
-            DiscordChannel canalDeVoz = context.Member.VoiceState?.Channel;
+            DiscordChannel canalDeVoz = null;
+
+            var (isConnected, voiceChannel) = await GetVoiceChannel(pedinte);
+            if (isConnected == true)
+                canalDeVoz = voiceChannel;
+
             DiscordChannel canalDeTexto = context.Channel;
 
             // Pré verificações
@@ -839,7 +957,7 @@ namespace GarçomDoKitts
         }
 
         [Command("canalTemporario")]
-        [Aliases("tmpC", "tempC", "tempChannel", "TemporarioCanal")]
+        [TextAlias("tmpC", "tempC", "tempChannel", "TemporarioCanal")]
         public async Task TempChannel_New(CommandContext context)
         {
             // Cria canal de acordo com o tempo especificado            
@@ -875,7 +993,7 @@ namespace GarçomDoKitts
         }
 
         [Command("canalTemporarioPrivado")]
-        [Aliases("tmpCp", "tempCp", "tempChannelPrivate", "TemporarioCanalPrivado", "CanalPrivado", "tmppvd")]
+        [TextAlias("tmpCp", "tempCp", "tempChannelPrivate", "TemporarioCanalPrivado", "CanalPrivado", "tmppvd")]
         public async Task TempChannel_NewPrivate(CommandContext context)
         {
             await TempChannel_NewPrivateModel(new TimeSpan(3, 0, 0), context, $"🔐 Canal de {context.User.Username}");

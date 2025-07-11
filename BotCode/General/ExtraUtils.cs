@@ -6,10 +6,8 @@ using System.Threading.Tasks;
 
 namespace GarçomDoKitts
 {
-    public class Mention
-    {
+    
 
 
 
-    }
 }
