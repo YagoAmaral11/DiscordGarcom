@@ -1,42 +1,55 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using GarçomDoKitts.configs;
-using DSharpPlus;
-using System.Net;
-using DSharpPlus.Net;
-using Newtonsoft.Json;
+﻿using DSharpPlus;
 using DSharpPlus.Entities;
-using System.Reflection;
-using System.Diagnostics;
-using System.Text.Json;
+using DSharpPlus.Net;
+using GarçomDoKitts.configs;
+using Lavalink4NET;
+using Lavalink4NET.Clients;
+using Lavalink4NET.DSharpPlus;
+using Lavalink4NET.Extensions;
+using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Rest;
+using Lavalink4NET.Tracks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace GarçomDoKitts
-{
+{    
     public class Jukebox
     {
         // Config                
         [JsonIgnore] public static ulong channelWhitelistId => Program.config.Jukebox_CommandChannel;
-        [JsonIgnore] public static List<LavalinkEndpoint> endpoints = new List<LavalinkEndpoint>();
+        [JsonIgnore] public static List<JukeboxEndpoint> endpoints = new List<JukeboxEndpoint>();
         [JsonIgnore] public static string endpointsPath = $"{DataIO.DataFolderPath}lavalinks.json";
 
         // Runtime data
         [JsonIgnore] public DiscordChannel channelMusic; // Canal para enviar mensagens de música        
         [JsonIgnore] public LavalinkTrack songCurrent = null; // Qual música está tocando agora
         [JsonIgnore] public List<LavalinkTrack> songQueue = new(); // Quais as próximas músicas que devem tocar
-        [JsonIgnore] public bool songPaused = false;
-
-        [JsonIgnore] public LavalinkEndpoint connectedEndpoint; // qual endpoint está conectado no momento
-        [JsonIgnore] public LavalinkExtension lavalink; // Lavalink desse bot
-        [JsonIgnore] public LavalinkNodeConnection lavalinkNode; // Nodo usado nesse server para música
+        [JsonIgnore] public bool songPaused = false;        
+        [JsonIgnore] public JukeboxEndpoint connectedEndpoint; // qual endpoint está conectado no momento       
         [JsonIgnore] public float timeoutMs;
 
-        // Properties
-        [JsonIgnore] public DiscordChannel channelConnectedVC => lavalinkPlayback?.Channel; // Canal que o bot está conectado
-        [JsonIgnore] public LavalinkGuildConnection lavalinkPlayback => lavalinkNode.GetGuildConnection(channelMusic.Guild);
+        [JsonIgnore] public IServiceProvider lavalinkService;
+        [JsonIgnore] public IAudioService audioService; // Gerencia os players do lavalink
+        [JsonIgnore] public QueuedLavalinkPlayer lavalinkPlayer; // Gerencia o próprio player do lavalink, conectado em um canal
+
+        // Properties        
+        public async Task<DiscordChannel> GetConnectionChannel()
+        {
+            if (lavalinkPlayer == null || lavalinkPlayer.VoiceChannelId == 0)
+                return null;
+
+            return await Program.client.GetChannelAsync(lavalinkPlayer.VoiceChannelId);
+        }        
+
         [JsonIgnore] public bool IsConnected 
         {
             get
@@ -60,16 +73,24 @@ namespace GarçomDoKitts
             }
         }
 
+        /*
+         * TODO: Usado apenas para referência; Depois remover
+            ANTIGO:
+            // [JsonIgnore] public LavalinkExtension lavalink; // Lavalink desse bot
+            // [JsonIgnore] public LavalinkNodeConnection lavalinkNode; // Nodo usado nesse server para música        
+            // [JsonIgnore] public LavalinkGuildConnection lavalinkPlayback => lavalinkNode.GetGuildConnection(channelMusic.Guild);
+            // [JsonIgnore] public DiscordChannel channelConnectedVC; // Canal que o bot está conectado        
+         */
 
         public async Task Init()
         {
             JsonDocument json = JsonDocument.Parse(File.ReadAllText(endpointsPath));
-            endpoints = new List<LavalinkEndpoint>();
+            endpoints = new List<JukeboxEndpoint>();
 
             // Inicializa os endpoints
             foreach (var ep in json.RootElement.GetProperty("endpoints").EnumerateArray())
             {
-                LavalinkEndpoint e = new(
+                JukeboxEndpoint e = new(
                     ep.GetProperty("Hostname").GetString(),
                     ep.GetProperty("Port").GetInt32(),
                     ep.GetProperty("SSH").GetBoolean(),
@@ -77,16 +98,32 @@ namespace GarçomDoKitts
                 );
                 endpoints.Add(e);
             }
-            
+
+            // Inicializa o Lavalink                        
+            HostApplicationBuilder servicesBuilder = Host.CreateApplicationBuilder();
+            servicesBuilder.Services.AddLavalink();
+            servicesBuilder.Services.ConfigureLavalink(options =>
+            {                
+                options.Hostname = config.Lavalink_Hostname;
+                options.Port = config.Lavalink_Port;
+                options.Password = config.Lavalink_Password;
+                options.Ssl = config.Lavalink_Ssl;
+            });
+            IHost servicesHost = servicesBuilder.Build();
+            lavalinkService = servicesHost.Services;
+            await servicesHost.RunAsync();
+
             // Inicializa runtime da jukebox
             songCurrent = null;
             songQueue = new();
             songPaused = false;
             channelMusic = await Program.client.GetChannelAsync(channelWhitelistId);
 
-            // Conecta no lavalink
-            lavalink = Program.client.UseLavalink();
-            await Connect();                               
+            // Inicializa o audio service
+            audioService = Program.services.GetRequiredService<IAudioService>();
+
+            // lavalink = Program.client.UseLavalink();
+            // await Connect();                                                                         
         }
 
         public async void Loop()
@@ -146,7 +183,7 @@ namespace GarçomDoKitts
         }
 
         // Conecta em um host de lavalink
-        private async Task<LavalinkNodeConnection> ConnectToEndpoint(LavalinkEndpoint endpoint)
+        private async Task<LavalinkNodeConnection> ConnectToEndpoint(JukeboxEndpoint endpoint)
         {
             ConnectionEndpoint e = endpoint.ToConnectionEndpoint();
             LavalinkNodeConnection con = null;
@@ -938,7 +975,7 @@ namespace GarçomDoKitts
         }
 
 
-        public class LavalinkEndpoint(string Hostname, int Port, bool ssh, string key)
+        public class JukeboxEndpoint(string Hostname, int Port, bool ssh, string key)
         {
             public string Hostname { get; set; } = Hostname;    
             public int Port { get; set; } = Port;
@@ -956,6 +993,5 @@ namespace GarçomDoKitts
             }
         }
 
-    }
-
+    }    
 }

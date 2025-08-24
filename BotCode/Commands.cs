@@ -522,25 +522,25 @@ namespace GarçomDoKitts
             // OBS: O problema aqui é agora como estamos lidando com comandos que podem ser do tipo slash, é possível que 
             // não exista uma mensagem de texto para o comando, então não podemos usar context.Message
             // Para contor, devemos alterar o comando subsequente 
-            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message);
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Channel);
         }
 
         [Command("PersonalizadaRapida")]        
         public async Task Jogos_PersoFast(CommandContext context, uint max)
         {
-            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max);
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Channel, max);
         }
 
         [Command("PersonalizadaRapida")]
         public async Task Jogos_PersoFast(CommandContext context, params string[] excludedPlayers)
         {
-            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, 5, excludedPlayers);
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Channel, 5, excludedPlayers);
         }
 
         [Command("PersonalizadaRapida")]
         public async Task Jogos_PersoFast(CommandContext context, uint max, params string[] excludedPlayers)
         {
-            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Message, max, excludedPlayers);
+            await Program.modulo_Jogos.Personalizada_SortearTimes_fast(context.Member, context.Channel, max, excludedPlayers);
         }
 
         [Command("ValorantMapa")]

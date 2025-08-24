@@ -13,9 +13,15 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Commands.Processors.TextCommands.Parsing;
 using DSharpPlus.Commands.Processors.SlashCommands;
+using Lavalink4NET.Extensions;
+using DSharpPlus.Extensions;
+using Microsoft.Extensions.Hosting;
+using Lavalink4NET;
+using System.Runtime.Serialization;
 
 namespace GarçomDoKitts
-{
+{   
+
     public static class Program
     {
         // IO/Data
@@ -26,7 +32,8 @@ namespace GarçomDoKitts
 
         // Discord APIs, Channels, Server, etc.
         public static DiscordClient client;
-        public static DiscordGuild servidor;       
+        public static DiscordGuild servidor;
+        public static IServiceProvider services;
 
         // Timers
         public static Timer mainTimer;
@@ -73,7 +80,7 @@ namespace GarçomDoKitts
 
             await DataIO.LoadConfig(); // Carrega configs
             InitDiscordClient(); // Inicia o client do Discord para o bot                        
-
+            
             await client.ConnectAsync(); 
             servidor = client.Guilds.Values.First(); // Seleciona o servidor que será conectado no bot
 
@@ -104,14 +111,13 @@ namespace GarçomDoKitts
             Console.WriteLine("(ConfigReset) Arquivo de template criado");
         }
 
-
         // Init
         private static void InitDiscordClient()
         {
             Console.WriteLine("(Program) Inicializando client e configurações do discord");
 
             // Inicializa as configurações do DiscordClient
-            DiscordClientBuilder clientBuilder = DiscordClientBuilder.CreateDefault(token.Token, DiscordIntents.All);
+            DiscordClientBuilder clientBuilder = DiscordClientBuilder.CreateDefault(token.Token, DiscordIntents.All);             
 
             clientBuilder.ConfigureGatewayClient(gateway =>
             {
@@ -139,10 +145,10 @@ namespace GarçomDoKitts
                     extension.AddProcessor(textCommandProcessor);
                     extension.AddCommands([typeof(Commands)]);
                 }
-            );
+            );            
 
             // Constrói o client do Discord
-            client = clientBuilder.Build();            
+            client = clientBuilder.Build();                                    
 
             Console.WriteLine("(Program) Inicialização finalizada");
             return;
@@ -185,7 +191,6 @@ namespace GarçomDoKitts
 
             return;
         }
-
 
         // Events
         private static Task Client_MessageCreated(DiscordClient sender, MessageCreatedEventArgs args)
@@ -259,7 +264,6 @@ namespace GarçomDoKitts
 
             Console.WriteLine("(Program) Bot finalizado");
         }
-
 
         // Loops
         private static async void Loop(object sender, ElapsedEventArgs e)

@@ -60,14 +60,14 @@ namespace GarçomDoKitts
 
         public string SortFromStringList(List<string> list) => list[sorteador.Next(0, list.Count - 1)];
 
-        public async Task Personalizada_SortearTimes_fast(DiscordMember member, DiscordMessage originalMessage, uint maxPorTime = 5, string[] excludedPlayers = null)
+        public async Task Personalizada_SortearTimes_fast(DiscordMember member, DiscordChannel messageChannel, uint maxPorTime = 5, string[] excludedPlayers = null)
         {
             DiscordVoiceState voiceState = member.VoiceState; // Serve para ver em qual canal da call está o usuário.            
 
             // Verificações Iniciais
             if (voiceState == null)
             {
-                await Program.client.SendMessageAsync(originalMessage.Channel, "Para usar esse comando você deve estar conectado em um canal de voz");
+                await Program.client.SendMessageAsync(messageChannel, "Para usar esse comando você deve estar conectado em um canal de voz");
                 return;
             }
 
@@ -75,14 +75,13 @@ namespace GarçomDoKitts
 
             if (voiceChatChannel.Users.Count < 3)
             {
-                await Program.client.SendMessageAsync(originalMessage.Channel, "Devem ter mais de 2 usuários na call para usar esse comando");
+                await Program.client.SendMessageAsync(messageChannel, "Devem ter mais de 2 usuários na call para usar esse comando");
                 return;
             }
             
-            DiscordMessageBuilder messageBuilder = new DiscordMessageBuilder();
-            messageBuilder.WithReply(originalMessage.Id, true);
+            DiscordMessageBuilder messageBuilder = new DiscordMessageBuilder();            
             messageBuilder.WithContent("Sorteando times...");
-            await messageBuilder.SendAsync(originalMessage.Channel);            
+            await messageBuilder.SendAsync(messageChannel);            
 
             List<DiscordMember> jogadores = new(voiceChatChannel.Users);            
             List<DiscordMember> timeA = new();
@@ -209,8 +208,8 @@ namespace GarçomDoKitts
             DiscordButtonComponent moverTimeB = new(DiscordButtonStyle.Primary, $"{moverTimeButton}1;{relatorio.UUID}", "Mover Time B");
             messageBuilder.AddActionRowComponent(moverTimeA, moverTimeB);               
 
-            await messageBuilder.WithReply(originalMessage.Id).SendAsync(originalMessage.Channel);
-            await originalMessage.Channel.SendMessageAsync(Program.GetTaskDoneMessage());
+            await messageBuilder.SendAsync(messageChannel);
+            await messageChannel.SendMessageAsync(Program.GetTaskDoneMessage());
         }        
 
         public async Task Personalizada_MoverTimes(string timeGeradoUUID, char Time, ComponentInteractionCreatedEventArgs args)
