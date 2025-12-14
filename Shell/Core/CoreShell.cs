@@ -35,16 +35,6 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     public DiscordUser shellDiscordUser => shellDiscordClient.CurrentUser;
     private IServiceProvider services;
 
-    // Events
-    public delegate Task MessageCreatedDelegate(DiscordClient sender, MessageCreatedEventArgs args);
-    public static event MessageCreatedDelegate OnMessageCreated;
-
-    public delegate Task MessageDeletedDelegate(DiscordClient sender, MessageDeletedEventArgs args);
-    public static event MessageDeletedDelegate OnMessageDeleted;
-
-    public delegate Task ComponentInteractionCreatedDelegate(DiscordClient sender, ComponentInteractionCreatedEventArgs args);
-    public static event ComponentInteractionCreatedDelegate OnComponentInteractionCreated;
-
     // Public Methods
     public async Task<bool> Start()
     {
@@ -95,12 +85,21 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         // Usada depois para aguardar o término da inicialização
         TaskCompletionSource<bool> readyToOperate = new();
 
+        // Inicializa módulos
+        foreach (IModule module in modules)
+        {
+            await module.Initialize(this, services);
+        }
+
         // Configura os event handlers dos eventos do bot
         dcClientBuilder.ConfigureEventHandlers(eventHandlers =>
         {
-            eventHandlers.HandleMessageCreated(Client_MessageCreated);
-            eventHandlers.HandleMessageDeleted(Client_MessageDeleted);
-            eventHandlers.HandleComponentInteractionCreated(Client_ComponentInteractionCreated);
+            // Inicializa os event handlers dos módulos
+            foreach (IModule module in modules)
+            {
+                module.ConfigureEventHandlers(eventHandlers);
+            }
+
             eventHandlers.HandleGuildDownloadCompleted
             (
                 (_, _) =>
@@ -123,6 +122,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
             extension.AddProcessor(textCommandProcessor);
             extension.AddProcessor(slashCommandProcessor);            
 
+            // Registra os comandos dos módulos
             foreach(IModule module in modules)
             {
                 extension.AddCommands(module.GetCommands());                
@@ -133,10 +133,10 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         }        
         );
 
-        // Inicializa módulos
+        // Começa a execução dos módulos
         foreach (IModule module in modules)
-        {            
-            await module.Initialize(this, services);
+        {
+            await module.Start();
         }
 
         // Inicializa o bot
@@ -181,22 +181,6 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     private List<Type> GetCommands()
     {
         return new List<Type>();
-    }
-
-    // Events
-    private async Task Client_MessageCreated(DiscordClient sender, MessageCreatedEventArgs args)
-    {        
-        await Task.Run(() => { OnMessageCreated?.Invoke(sender, args); });        
-    }
-
-    private async Task Client_MessageDeleted(DiscordClient sender, MessageDeletedEventArgs args)
-    {                
-        await Task.Run(() => { OnMessageDeleted?.Invoke(sender, args); });        
-    }
-
-    private async Task Client_ComponentInteractionCreated(DiscordClient sender, ComponentInteractionCreatedEventArgs args)
-    {        
-        await Task.Run(() => { OnComponentInteractionCreated?.Invoke(sender, args); });        
     }
     
 }
