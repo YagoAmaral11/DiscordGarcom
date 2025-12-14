@@ -24,18 +24,28 @@ public class FileSystem : IPersistance, IConfigPersistance
         ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve
     };
 
-    private async Task Write(string ToWrite, string acessKey)
+    private async Task Write(string ToWrite, string acessKey, string fileExtension = ".json")
     {
-        using (StreamWriter sw = new(acessKey + ".json"))
+        if (!Directory.Exists(Path.GetDirectoryName(acessKey + fileExtension)))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(acessKey + fileExtension));
+        }
+
+        using (StreamWriter sw = new(acessKey + fileExtension))
         {
             await sw.WriteAsync(ToWrite);
         }
     }
 
-    private async Task<string> Read(string acessKey)
+    private async Task<string> Read(string acessKey, string fileExtension = ".json")
     {
+        if (!File.Exists(acessKey + fileExtension))
+        {
+            return "File not found";
+        }
+
         string content;
-        using (StreamReader sr = new(acessKey + ".json"))
+        using (StreamReader sr = new(acessKey + fileExtension))
         {
             content = await sr.ReadToEndAsync();
         }
@@ -70,7 +80,7 @@ public class FileSystem : IPersistance, IConfigPersistance
         return JsonSerializer.Deserialize(json, objectType, serializerOptions);
     }
 
-    public async Task WriteRaw(string ToWrite, string acessKey) => await Write(ToWrite, acessKey);    
+    public async Task WriteRaw(string ToWrite, string acessKey) => await Write(ToWrite, acessKey, String.Empty);    
 
-    public async Task<string> ReadRaw(string acessKey) => await Read(acessKey);
+    public async Task<string> ReadRaw(string acessKey) => await Read(acessKey, String.Empty);
 }

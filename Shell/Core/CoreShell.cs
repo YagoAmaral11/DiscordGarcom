@@ -14,7 +14,7 @@ using DSharpPlus.Commands.Processors.SlashCommands;
 
 namespace GarçomDoKitts.Shell.Core;
 
-public class CoreShell(IPersistance persistance, List<IModule> modules, ulong LinkedServerID) : IModule, IServerContext
+public class CoreShell(IPersistance persistance, List<IModule> modules, ulong LinkedServerID) : IServerContext
 {
     // Internal 
     public List<IModule> modules = modules;
@@ -23,7 +23,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
 
     // Config Data
     public string Name => "Shell";
-    public const string TokenAcessKey = "BotToken";
+    public const string TokenAcessKey = "data/BotToken";
     public const string CommandPrefixesAcessKey = "CommandPrefixes";
     private List<string> TextCommandsPrefixes;
 
@@ -45,8 +45,30 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     public delegate Task ComponentInteractionCreatedDelegate(DiscordClient sender, ComponentInteractionCreatedEventArgs args);
     public static event ComponentInteractionCreatedDelegate OnComponentInteractionCreated;
 
+    // Public Methods
+    public async Task<bool> Start()
+    {
+        if (persistance is null)
+        {
+            throw new Exception("Persistance is not assigned");
+        }
+
+        if (modules.Count == 0)
+        {
+            Console.WriteLine("Warning: Launching shell without modules");
+        }
+
+        return await Initialize(null, null);
+    }
+
+    public async Task Stop()
+    {
+        Console.Write("Stopping shell");
+        await Shutdown();
+    }
+
     // Methods
-    public async Task<bool> Initialize(IServerContext context, IServiceProvider serviceProvider)
+    private async Task<bool> Initialize(IServerContext context, IServiceProvider serviceProvider)
     {        
         if (persistance == null)
         {
@@ -70,12 +92,23 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         // Inicializa discord client
         DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);
 
+        // Usada depois para aguardar o término da inicialização
+        TaskCompletionSource<bool> readyToOperate = new();
+
         // Configura os event handlers dos eventos do bot
         dcClientBuilder.ConfigureEventHandlers(eventHandlers =>
         {
             eventHandlers.HandleMessageCreated(Client_MessageCreated);
             eventHandlers.HandleMessageDeleted(Client_MessageDeleted);
             eventHandlers.HandleComponentInteractionCreated(Client_ComponentInteractionCreated);
+            eventHandlers.HandleGuildDownloadCompleted
+            (
+                (_, _) =>
+                {
+                    readyToOperate.SetResult(true);           
+                    return Task.CompletedTask;
+                }
+            );            
         });
 
         // Cria os processadores de comandos
@@ -110,24 +143,24 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         discordClient = dcClientBuilder.Build();
         await discordClient.ConnectAsync();                
 
-        // Finaliza inicialização
-        initialTime = DateTime.Now;                
+        await readyToOperate.Task; // Aguarda o término da inicialização do bot
 
-        // Verifica se o bot etá linkada ao servidor específico
+        // Finaliza inicialização
+        initialTime = DateTime.Now;                                 
+
+        // Verifica se o bot está linkada ao servidor específico
         if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == true)
         {
             shellGuild = val;
-            await Task.Delay(-1);
+            return true;
         }
         else
         {
             return false;
         }            
-
-        return true;
     }
 
-    public async Task SaveData()
+    private async Task SaveData()
     {
         foreach (IModule module in modules)
         {
@@ -135,7 +168,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         }        
     }
 
-    public async Task<bool> Shutdown()
+    private async Task<bool> Shutdown()
     {
         foreach (IModule module in modules)
         {
@@ -145,9 +178,9 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         return true;
     }
     
-    public List<Type> GetCommands()
+    private List<Type> GetCommands()
     {
-        return null;
+        return new List<Type>();
     }
 
     // Events
