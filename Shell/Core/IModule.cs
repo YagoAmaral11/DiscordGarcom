@@ -12,11 +12,10 @@ public interface IModule
 
     public string Name { get; } // Usado em logs e mensagens
 
-    /*
-     *  ORDEM DE CHAMADA DOS MÉTODOS:
-     *  1. Initialize
-     *  2. ConfigureEventHandlers
-     *  3. Start
+    /*  ORDEM DE CHAMADA DOS MÉTODOS:     
+     *  1. Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)
+     *  2. ConfigureEventHandlers (Usado para receber eventos do bot)
+     *  3. Start (Usado para iniciar o bot em si; Se precisar usar outro módulo, use aqui)
      * 
      */
 
@@ -26,6 +25,6 @@ public interface IModule
 
     public Task SaveData();
     public Task<bool> Shutdown();
-    public List<Type> GetCommands();    
+    public List<Type> GetCommands(); // Usado para registrar comandos de texto e slash commands
 
 }
