@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GarçomDoKitts.GarcModules;
 using GarçomDoKitts.Shell;
 using GarçomDoKitts.Shell.IO;
 
@@ -14,7 +15,10 @@ public static class Init
     public static async Task Main(string[] args)
     {
         FileSystem fileSystem = new();
-        CoreShell garcKittsShell = new(fileSystem, new(), 832773492738490448);        
+        Frases garcKFrasesModule = new(fileSystem, fileSystem);        
+
+        CoreShell garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule], LinkedServerID: 832773492738490448);        
+
         if (await garcKittsShell.Start())
         {            
             await Task.Delay(-1);

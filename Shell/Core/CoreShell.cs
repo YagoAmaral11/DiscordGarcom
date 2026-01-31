@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 using GarçomDoKitts.Shell.Core.DSharpPlusAdapters;
 using DSharpPlus.Commands.Processors.SlashCommands;
+using DSharpPlus.Commands.Trees.Metadata;
 
 namespace GarçomDoKitts.Shell.Core;
 
@@ -19,10 +20,10 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     // Internal 
     public List<IModule> modules = modules;
     public IPersistance persistance = persistance;   
-    private ulong linkedServerID = LinkedServerID;
+    private readonly ulong linkedServerID = LinkedServerID;
 
     // Config Data
-    public string Name => "Shell";
+    public static string Name => "Shell";
     public const string TokenAcessKey = "data/BotToken";
     public const string CommandPrefixesAcessKey = "CommandPrefixes";
     private List<string> TextCommandsPrefixes;
@@ -30,9 +31,9 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     // Runtime Data
     private string Token;
     private DateTime initialTime; public DateTime InitialTime => initialTime;            
-    private DiscordClient discordClient; public DiscordClient shellDiscordClient => discordClient;
-    private DiscordGuild shellGuild; public DiscordGuild connectedServer => shellGuild;
-    public DiscordUser shellDiscordUser => shellDiscordClient.CurrentUser;
+    private DiscordClient discordClient; public DiscordClient BotDiscordClient => discordClient;
+    private DiscordGuild shellGuild; public DiscordGuild BindedDiscordServer => shellGuild;
+    public DiscordUser BotDiscordUser => BotDiscordClient.CurrentUser;
     private IServiceProvider services;
 
     // Public Methods
@@ -85,6 +86,9 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         // Usada depois para aguardar o término da inicialização
         TaskCompletionSource<bool> readyToOperate = new();
 
+        // Verificar módulos duplicados
+        VerifyDuplicatedModules();
+
         // Inicializa módulos
         foreach (IModule module in modules)
         {
@@ -92,6 +96,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
         }
 
         // Configura os event handlers dos eventos do bot
+        // Configura a Task que indica o término da inicialização do bot
         dcClientBuilder.ConfigureEventHandlers(eventHandlers =>
         {
             // Inicializa os event handlers dos módulos
@@ -125,13 +130,29 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
             // Registra os comandos dos módulos
             foreach(IModule module in modules)
             {
-                extension.AddCommands(module.GetCommands());                
+                extension.AddCommands(module.GetStaticCommands());
+                extension.AddCommands(module.GetDynamicCommands());                
             }                   
 
-            extension.AddCommands(this.GetCommands()); // Comandos nativos do CoreShell
-
+            extension.AddCommands(this.GetCommands()); // Comandos nativos do CoreShell            
         }        
-        );
+        );                
+
+        // Inicializa o bot
+        discordClient = dcClientBuilder.Build();
+        await discordClient.ConnectAsync();                
+
+        await readyToOperate.Task; // Aguarda o término da inicialização do bot        
+
+        // Verifica se o bot está linkado ao servidor específico
+        if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == false)
+            return false;
+
+        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Bloquear aqui
+
+        // Finaliza inicialização, preenche o Server context
+        shellGuild = val;        
+        initialTime = DateTime.Now;
 
         // Começa a execução dos módulos
         foreach (IModule module in modules)
@@ -139,25 +160,30 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
             await module.Start();
         }
 
-        // Inicializa o bot
-        discordClient = dcClientBuilder.Build();
-        await discordClient.ConnectAsync();                
+        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui
 
-        await readyToOperate.Task; // Aguarda o término da inicialização do bot
+        return true;
+    }
 
-        // Finaliza inicialização
-        initialTime = DateTime.Now;                                 
+    private bool VerifyDuplicatedModules()
+    {
+        HashSet<Type> modulesTypes = new();
 
-        // Verifica se o bot está linkada ao servidor específico
-        if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == true)
+        foreach (IModule module in modules)
         {
-            shellGuild = val;
-            return true;
+            object moduleObject = module;
+            Type type = moduleObject.GetType();
+
+            if (modulesTypes.Contains(type))
+            {
+                Console.WriteLine($"Error: Duplicated module detected: {module.Name}");
+                throw new Exception($"{module.Name} is duplicated");                
+            }
+
+            modulesTypes.Add(type);
         }
-        else
-        {
-            return false;
-        }            
+
+        return true;
     }
 
     private async Task SaveData()
@@ -177,10 +203,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
 
         return true;
     }
-    
-    private List<Type> GetCommands()
-    {
-        return new List<Type>();
-    }
+
+    private List<Type> GetCommands() => [];
     
 }

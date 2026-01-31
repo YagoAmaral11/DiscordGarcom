@@ -9,6 +9,7 @@ namespace GarçomDoKitts.Shell.Core;
 public interface IPersistance
 {
 
+    public Task<bool> KeyExists(string acessKey);
     public Task WriteJSON(string ToWrite, string acessKey);
     public Task WriteObject(object ToWrite, Type objectType, string acessKey);
     public Task WriteRaw(string ToWrite, string acessKey);

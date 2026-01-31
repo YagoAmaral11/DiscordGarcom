@@ -9,7 +9,9 @@ namespace GarçomDoKitts.Shell.Core;
 public interface IConfigPersistance
 {
 
-    public Task WriteConfig(object ToWrite, Type objectType, IModule module);
+    public Task<bool> ConfigExists(IModule module);
+    public Task WriteConfig(object module);
+    public Task<object> LoadConfig(object module);
     public Task<object> LoadConfig(Type objectType, IModule module);
-
+    
 }

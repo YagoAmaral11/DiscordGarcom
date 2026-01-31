@@ -18,10 +18,7 @@ public class FileSystem : IPersistance, IConfigPersistance
     public static readonly string ConfigFolderPath = "config/";
     public static readonly JsonSerializerOptions serializerOptions = new()
     {
-        WriteIndented = true,
-        IncludeFields = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve
+        WriteIndented = true,                  
     };
 
     private async Task Write(string ToWrite, string acessKey, string fileExtension = ".json")
@@ -66,12 +63,30 @@ public class FileSystem : IPersistance, IConfigPersistance
         return JsonSerializer.Deserialize(json, objectType, serializerOptions);
     }
 
-    public async Task<string> ReadJSON(string acessKey) => await Read(DataFolderPath + acessKey);    
+    public async Task<string> ReadJSON(string acessKey) => await Read(DataFolderPath + acessKey);        
 
-    public async Task WriteConfig(object ToWrite, Type objectType, Core.IModule module)
+    public async Task WriteConfig(object module)
     {
-        string json = JsonSerializer.Serialize(ToWrite, objectType, serializerOptions);
-        await Write(json, ConfigFolderPath + module.Name);
+        if (module is not IModule)
+        {
+            throw new ArgumentException("Module must implement IModule interface");
+        }
+
+        IModule moduleInterface = module as IModule;
+        string json = JsonSerializer.Serialize(module, module.GetType(), serializerOptions);
+        await Write(json, ConfigFolderPath + moduleInterface.Name);
+    }
+
+    public async Task<object> LoadConfig(object module)
+    {
+        if (module is not IModule)
+        {
+            throw new ArgumentException("Module must implement IModule interface");
+        }
+
+        IModule moduleInterface = module as IModule;
+        string json = await Read(ConfigFolderPath + moduleInterface.Name);
+        return JsonSerializer.Deserialize(json, module.GetType(), serializerOptions);
     }
 
     public async Task<object> LoadConfig(Type objectType, Core.IModule module)
@@ -83,4 +98,9 @@ public class FileSystem : IPersistance, IConfigPersistance
     public async Task WriteRaw(string ToWrite, string acessKey) => await Write(ToWrite, acessKey, String.Empty);    
 
     public async Task<string> ReadRaw(string acessKey) => await Read(acessKey, String.Empty);
+
+    public Task<bool> KeyExists(string acessKey) => Task.FromResult(File.Exists(DataFolderPath + acessKey));
+
+    public Task<bool> ConfigExists(IModule module) => Task.FromResult(File.Exists(ConfigFolderPath + module.Name + ".json"));
+
 }

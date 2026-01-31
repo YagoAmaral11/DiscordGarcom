@@ -14,7 +14,7 @@ namespace GarçomDoKitts.Shell.Core;
 
 public interface IServerContext
 {
-    public DiscordGuild connectedServer { get; }
-    public DiscordClient shellDiscordClient { get; }
-    public DiscordUser shellDiscordUser { get; }
+    public DiscordGuild BindedDiscordServer { get; }
+    public DiscordClient BotDiscordClient { get; }
+    public DiscordUser BotDiscordUser { get; }
 }
