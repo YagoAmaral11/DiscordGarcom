@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using GarçomDoKitts.GarcModules;
 using GarçomDoKitts.Shell;
+using GarçomDoKitts.Shell.Core.Modules;
 using GarçomDoKitts.Shell.IO;
 
 namespace GarçomDoKitts.Shell.Core;
