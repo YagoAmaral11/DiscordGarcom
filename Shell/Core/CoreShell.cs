@@ -15,10 +15,10 @@ using DSharpPlus.Commands.Trees.Metadata;
 
 namespace GarçomDoKitts.Shell.Core;
 
-public class CoreShell(IPersistance persistance, List<IModule> modules, ulong LinkedServerID) : IServerContext
+public class CoreShell(IPersistance persistance, IEnumerable<IModule> modules, ulong LinkedServerID) : IServerContext
 {
     // Internal 
-    public List<IModule> modules = modules;
+    public IList<IModule> modules = modules.ToList();
     public IPersistance persistance = persistance;   
     private readonly ulong linkedServerID = LinkedServerID;
 
@@ -56,6 +56,47 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
     {
         Console.Write("Stopping shell");
         await Shutdown();
+    }
+
+    public bool TryGetModule<T>(out T Module) where T : IModule
+    {
+        Module = default(T);
+
+        foreach (var module in modules)
+        {
+            if (module.GetType() is T)
+            {
+                Module = (T) module;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public T GetModule<T>() where T : IModule
+    {
+        foreach (var module in modules)
+        {
+            if (module.GetType() is T)
+            {
+                return (T) module;
+            }
+        }
+
+        throw new KeyNotFoundException("Could not find any module of the type " + typeof(T).AssemblyQualifiedName);
+    }    
+
+    public object GetModule(Type moduleType)
+    {
+        foreach (var module in modules)
+        {
+            if (module.GetType() == moduleType)
+            {
+                return module;
+            }
+        }
+
+        throw new KeyNotFoundException("Could not find any module of the type " + moduleType.AssemblyQualifiedName);
     }
 
     // Methods
@@ -196,6 +237,7 @@ public class CoreShell(IPersistance persistance, List<IModule> modules, ulong Li
 
     private async Task<bool> Shutdown()
     {
+        // No Shutdown dos módulos, já devem salvar seus dados
         foreach (IModule module in modules)
         {
             await module.Shutdown();
