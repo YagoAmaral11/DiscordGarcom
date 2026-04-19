@@ -65,7 +65,7 @@ public class FileSystem : IPersistance, IConfigPersistance
 
     public async Task<string> ReadJSON(string acessKey) => await Read(DataFolderPath + acessKey);        
 
-    public async Task WriteConfig(object module)
+    public async Task WriteConfig(object module, object config)
     {
         if (module is not IModule)
         {
@@ -73,11 +73,11 @@ public class FileSystem : IPersistance, IConfigPersistance
         }
 
         IModule moduleInterface = module as IModule;
-        string json = JsonSerializer.Serialize(module, module.GetType(), serializerOptions);
+        string json = JsonSerializer.Serialize(config, config.GetType(), serializerOptions);
         await Write(json, ConfigFolderPath + moduleInterface.Name);
     }
 
-    public async Task<object> LoadConfig(object module)
+    public async Task<object> LoadConfig(object module, Type configType)
     {
         if (module is not IModule)
         {
@@ -86,13 +86,7 @@ public class FileSystem : IPersistance, IConfigPersistance
 
         IModule moduleInterface = module as IModule;
         string json = await Read(ConfigFolderPath + moduleInterface.Name);
-        return JsonSerializer.Deserialize(json, module.GetType(), serializerOptions);
-    }
-
-    public async Task<object> LoadConfig(Type objectType, Core.IModule module)
-    {
-        string json = await Read(ConfigFolderPath + module.Name);
-        return JsonSerializer.Deserialize(json, objectType, serializerOptions);
+        return JsonSerializer.Deserialize(json, configType, serializerOptions);
     }
 
     public async Task WriteRaw(string ToWrite, string acessKey) => await Write(ToWrite, acessKey, String.Empty);    

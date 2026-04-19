@@ -14,49 +14,35 @@ namespace GarçomDoKitts.GarcModules;
 [Command("Frases")]
 public class Frases(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
 {
-    // TODO: Alterar a forma de persistir as configs e os dados; Criar uma classe própria em cada módulo para isso e serializar ela.
-    // Config Data (Permissões/Uso)
-    [JsonInclude] public bool DoDaily { get; private set; } = true; // Ativar mensagem diária
-    [JsonInclude] public bool AllowRandomCmd { get; private set; } = true; // Ativar comando frase aleatória
-    [JsonInclude] public bool AllowDailyCmd { get; private set; } = true; // Ativar comando para mostrar a frase diária atual    
+    // Config
+    private FrasesConfig config;
 
-    // Config Data (Canais e Timings)
-    [JsonInclude] public ulong OriginChannelID { get; private set; } // Canal de onde as frases serão coletadas
-    [JsonInclude] public ulong BroadcastChannelID { get; private set; } // Canal onde as frases serão enviadas
-    [JsonInclude] public int DefaultDelayMs { get; private set; } = 1000; // Quanto tempo cada requisição aguarda no fetching de mensagens
-    [JsonInclude] public int ErrorDelayMs { get; private set; } = 2000; // Quanto tempo o módulo aguarda caso exista um problema no fetching das mensagens, um ratelimit por exemplo.
-    [JsonInclude] public TimeOnly DailyTime { get; private set; } = new(12, 0); // Horário da mensagem diária
-
-    // Config Data (Embeds e Mensagens)
-    [JsonInclude] public bool DoMesageLinkBtn { get; private set; } = true; // A cada frase enviada, adicionar um botão com o link para a mensagem original
-    [JsonInclude] public string StandardEmbedColorHex { get; private set; } = "d619bd"; // Cor padrão dos embeds (em hexadecimal)
-    [JsonInclude] public string DailyEmbedTitle { get; private set; } = "Frase do Dia"; // Título do embed da mensagem diária
-    [JsonInclude] public string DailyEmbedColorHex { get; private set; } = "d619bd"; // Cor do embed da mensagem diária (em hexadecimal)
-    [JsonInclude] public string RandomEmbedTitle { get; private set; } = "Frase Aleatória"; // Título do embed da mensagem aleatória
-    [JsonInclude] public string RandomEmbedColorHex { get; private set; } = "d619bd"; // Cor do embed da mensagem aleatória (em hexadecimal)
-
-    // Runtime Data
+    // Dependencies
     private Random rng;
     private IServiceProvider services;
     private IPersistance persistance = persistance;
     private IConfigPersistance configPersistance = configPersistance;
     private IScheduler scheduler = scheduler;
+    private IServerContext serverContext; // Qual servidor do Discord que o módulo está rodando, usado para pegar informações do servidor
 
+    // Cached Channels
     private DiscordChannel origin; // Canal de onde as frases serão coletadas
-    private DiscordChannel broadcast; // Canal onde as frases serão enviadas    
-    private IServerContext serverContext;
-    
+    private DiscordChannel broadcast; // Canal onde as frases serão enviadas        
+
+    // Data
+    private FrasesData data;
     private List<ulong> cachedMessageIDs = new(); // A lista com os IDs das mensagens em cache
-    private DiscordMessage daily; // Mensagem diária atual    
-    private CommandBuilder moduleCB = new();
+    private DiscordMessage daily; // Mensagem diária atual        
+
+    // Misc
     private bool ready = false; // Se o módulo está pronto para receber comandos
+    private CommandBuilder moduleCB = new(); // Usado para registrar os comandos do módulo
 
 
 
     [JsonIgnore] public string Name => "Frases";
 
-    // TODO: Depois remover isso; só existe para que seja possível serializar essa classe, mas esse construtor nao deve existir
-    public Frases() : this(null, null, null) {}
+
 
     public List<Type> GetStaticCommands() => [];
     public IEnumerable<CommandBuilder> GetDynamicCommands()
@@ -89,13 +75,12 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         if (await configPersistance.ConfigExists(this))
         {
             // Carrega a configuração existente
-            Frases loadedConfig = await configPersistance.LoadConfig(this) as Frases;
-            LoadConfig(loadedConfig);
+            await LoadConfig();            
         }
         else
         {
             // Cria uma configuração inicial
-            await configPersistance.WriteConfig(this);
+            await configPersistance.WriteConfig(this, config);
             throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
         }
 
@@ -133,39 +118,27 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return Task.CompletedTask;
     }
 
-    private void LoadConfig(Frases loadedConfigs)
+    private async Task LoadConfig()
     {
-        DoDaily = loadedConfigs.DoDaily;
-        AllowRandomCmd = loadedConfigs.AllowRandomCmd;
-        AllowDailyCmd = loadedConfigs.AllowDailyCmd;
-        OriginChannelID = loadedConfigs.OriginChannelID;
-        BroadcastChannelID = loadedConfigs.BroadcastChannelID;
-        DefaultDelayMs = loadedConfigs.DefaultDelayMs;
-        ErrorDelayMs = loadedConfigs.ErrorDelayMs;
-        DailyTime = loadedConfigs.DailyTime;
-        DoMesageLinkBtn = loadedConfigs.DoMesageLinkBtn;
-        StandardEmbedColorHex = loadedConfigs.StandardEmbedColorHex;
-        DailyEmbedTitle = loadedConfigs.DailyEmbedTitle;
-        DailyEmbedColorHex = loadedConfigs.DailyEmbedColorHex;
-        RandomEmbedTitle = loadedConfigs.RandomEmbedTitle;
-        RandomEmbedColorHex = loadedConfigs.RandomEmbedColorHex;
+        FrasesConfig loadedConfig = await configPersistance.LoadConfig(this, typeof(FrasesConfig)) as FrasesConfig;
+        config = loadedConfig;
     }
 
 
     public async Task Start()
     {
         ready = false;
-        origin = await serverContext.BindedDiscordServer.GetChannelAsync(OriginChannelID);
-        broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(BroadcastChannelID);
+        origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
+        broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(config.BroadcastChannelID);
 
         await Fetch();
 
         // Inicializa agendamentos
+        // TODO: Deve ser criado uma forma de informar o fuso horário; No momento, fica refém ao fuso horário do servidor  
         SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
         for (int i = 0; i < 7; i++)
-        {
-            // TODO: Deve ser criado uma forma de informar o fuso horário; No momento, fica refém ao fuso horário do servidor            
-            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(DailyTime.Ticks));
+        {                      
+            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(config.DailyTime.Ticks));
         }
 
         scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
@@ -176,6 +149,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
     // Pega todas as mensagens do canal de origem
     // Realiza o cache, salvando os IDs em uma lista
+    // TODO: Verificar se ainda dá problema de ratelimits e melhorar o logging
     private async Task Fetch()
     {
         // TODO: Solucionar problemas de ratelimits (?) acontecem por algum motivo
@@ -213,7 +187,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
             messageIDs.Add(anchorMessageID);
         }
 
-        await Task.Delay(DefaultDelayMs);
+        await Task.Delay(config.DefaultDelayMs);
 
         // Procura e adiciona o ID de todas as mensagens na lista de mensagens encontradas; 
         // Só para quando não tiver mais mensagens no canal
@@ -242,7 +216,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
             {
                 // TODO: Dar log no erro
                 errorOcorred = true;
-                await Task.Delay(ErrorDelayMs);
+                await Task.Delay(config.ErrorDelayMs);
             }
 
             if (oldAnchorId == anchorMessageID && !errorOcorred)
@@ -251,16 +225,16 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
                 break;
             }
 
-            await Task.Delay(DefaultDelayMs);
+            await Task.Delay(config.DefaultDelayMs);
         }                  
         
         cachedMessageIDs = messageIDs;
     }
 
     // Retorna verdadeiro se a mensagem é realmente uma frase
+    // TODO: Melhorar o filtro; Algumas frases ainda não são capturadas, principalmente aquelas que que só tem uma aspas (typos)
     private static bool FilterMessage(DiscordMessage msg)
-    {
-        // TODO: Melhorar o filtro; Algumas frases ainda não são capturadas, principalmente aquelas que que só tem uma aspas (typos)
+    {        
         string content = msg.Content;
         int aspasDuplas = 0;
         int aspasSimples = 0;
@@ -288,12 +262,13 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         int count = cachedMessageIDs.Count;
         int index = rng.Next(0, count);
         return cachedMessageIDs[index];
-    }       
+    }
 
 
+    // Seleciona e envia uma mensagem diária aleatória do canal de origem para o canal de broadcast
     public async Task DailyMessage()
     {
-        if (!DoDaily)
+        if (!config.DoDaily)
             return;
 
         ulong messageID = ChooseRandomMessage();
@@ -304,6 +279,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
    
 
 
+    // Seleciona e envia uma mensagem aleatória do canal de origem como resposta para o comando
     [Command("Aleatoria")]
     public async Task RandomMessage(CommandContext context)
     {
@@ -312,23 +288,33 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         ulong messageID = ChooseRandomMessage();
         DiscordMessage msg = await origin.GetMessageAsync(messageID);
-        DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, RandomEmbedTitle, RandomEmbedColorHex, msg.JumpLink.ToString());
+        DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
         await context.RespondAsync(embed);
     }
 
+    // Reenvia a mensagem diária atual como resposta para o comando
     [Command("Diaria")]
-    public async Task ResendDaily(CommandContext context) => await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));    
-
+    public async Task ResendDaily(CommandContext context)
+    {
+        if (daily != null)
+        {
+            await context.RespondAsync(CreateDailyMessageToSend(daily));
+        }
+        else
+        {
+            await context.RespondAsync("A mensagem diária não foi escolhida ainda");
+        }
+    }
 
     // Constrói um embed de frase padrão
-    private DiscordEmbed CreateDailyMessageToSend(DiscordMessage msg) => EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, DailyEmbedTitle, DailyEmbedColorHex, msg.JumpLink.ToString());    
+    private DiscordEmbed CreateDailyMessageToSend(DiscordMessage msg) => EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.DailyEmbedTitle, config.DailyEmbedColorHex, msg.JumpLink.ToString());    
     private DiscordEmbed EmbedBuilder(string content, DiscordUser Writer, DateTimeOffset MessageTimestamp, string EmbedTitle = null, string HexColor = null, string MessageUrl = null)
     {
         if (EmbedTitle is null)
-            EmbedTitle = DailyEmbedTitle;
+            EmbedTitle = config.DailyEmbedTitle;
 
         if (HexColor is null)
-            HexColor = StandardEmbedColorHex;
+            HexColor = config.StandardEmbedColorHex;
 
         DiscordEmbedBuilder embed = new();
 
@@ -349,17 +335,17 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
 
 
-    public Task<bool> SaveData()
-    {
-        // TODO: Salvar dados de runtime do módulo, caso necessário
-        return Task.FromResult(true);
+    public async Task<bool> SaveData()
+    {        
+        await persistance.WriteObject(data, typeof(FrasesData), Name + "Data");
+        return true;
     }
 
 }
 
 public class FrasesData
 {
-    [JsonInclude] public string DailyID { get; set; }
+    [JsonInclude] public string DailyID { get; set; } // O ID da mensagem diária atual
 }
 
 public class FrasesConfig
