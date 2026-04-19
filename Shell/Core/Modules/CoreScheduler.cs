@@ -36,8 +36,12 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         // TODO: Carregar as configurações do Scheduler        
 
         this.serverContext = serverContext;
+        JsonNode callbackArray;
 
-        JsonNode callbackArray = JsonNode.Parse(await persistance.ReadRaw("CoreSchedulerData"));
+        if (await persistance.KeyExists("CoreSchedulerData"))
+            callbackArray = JsonNode.Parse(await persistance.ReadRaw("CoreSchedulerData"));
+        else
+            callbackArray = new JsonArray([]);
 
         foreach (var JsonObject in callbackArray.AsArray())
         {
@@ -294,7 +298,9 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         {
             // Agenda o mesma callback novamente, repetindo ele mas trocando a data de nova execução
             callback.NextExecution = nextRepeatDate.Value;
-            EnqueueNew(callback);
+            // Não é necessário executar o scheduler novamente, pois é uma repetição; Scheduler já será executado no RunScheduler que
+            // invocou essa função
+            EnqueueNew(callback, false); 
         }
         else
         {            

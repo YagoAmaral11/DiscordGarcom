@@ -17,9 +17,10 @@ public static class Init
     public static async Task Main(string[] args)
     {
         FileSystem fileSystem = new();
-        Frases garcKFrasesModule = new(fileSystem, fileSystem);        
+        CoreScheduler scheduler = new(fileSystem);
+        Frases garcKFrasesModule = new(fileSystem, fileSystem, scheduler);                
 
-        CoreShell garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule], LinkedServerID: 832773492738490448);        
+        CoreShell garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler], LinkedServerID: 832773492738490448);        
 
         if (await garcKittsShell.Start())
         {            
