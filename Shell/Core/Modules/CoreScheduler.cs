@@ -116,7 +116,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         public DateTimeOffset? NextRepeatDate()
         {
             DateTimeOffset? nextRepeat = null;
-            DateTimeOffset currentDate = DateTimeOffset.Now;
+            DateTimeOffset currentDate = DateTimeOffset.Now;            
 
             switch (ScheduleType)
             {
@@ -128,23 +128,29 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                     break;
                 case ScheduleType.SemanalRepeat:                    
                     // Cria, de acordo com os dias de repetição semanais, os próximos dias de repetição
-                    // Depois ordena por ordem cronológica e seleciona o primeiro (mais próximo)
+                    // Depois ordena por ordem cronológica e seleciona o primeiro (mais próximo)                    
+
                     nextRepeat = SemanalRepeat_Days.Select
                     (
-                            s =>
-                            {
-                                // Verifica a diferença do dia de repetição e o dia atual, 
-                                // depois adiciona 7 dias para os casos onde o dia atual já passou o dia de repetição                                
-                                int dif = ((int) s.DayOfWeek - (int) currentDate.DayOfWeek + 7) % 7;
+                        s =>
+                        {
+                            // Verifica a diferença do dia de repetição e o dia atual, 
+                            // depois adiciona 7 dias para os casos onde o dia atual já passou o dia de repetição                                
+                            int dif = ((int) s.DayOfWeek - (int) currentDate.DayOfWeek + 7) % 7;
 
-                                // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
-                                // Caso contrário, essa repetição deve ser da próxima semana
-                                if (dif == 0 && currentDate.TimeOfDay >= s.TimeOfDay)
-                                    dif = 7;
-                                
-                                return currentDate.Date.AddDays(dif).Add(s.TimeOfDay);
-                            }
+                            // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
+                            // Caso contrário, essa repetição deve ser da próxima semana
+                            DateTime dataAtual = currentDate.Date;
+                            DateTime dataRepetição = new DateTime(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks));
+                            DateTimeOffset dataRepetiçãoOffset = TimeZoneInfo.ConvertTime(dataRepetição, s.TimeZone);
+
+                            if (dif == 0 && currentDate >= dataRepetiçãoOffset)
+                                dif = 7;
+                            
+                            return TimeZoneInfo.ConvertTime(currentDate.Date.AddDays(dif).Add(s.TimeOfDay), s.TimeZone);
+                        }
                     ).Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();                    
+
                     break;
                 case ScheduleType.MonthlyRepeat:
                     // Cria, de acordo com os dias de repetição mensais, os próximos dias de repetição
@@ -160,7 +166,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                         month = nextValidDate.nextValidMonth;
 
                         // Cria o dia válido desse dia de repetição mensal
-                        var possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), currentDate.Offset);                        
+                        var possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                        
 
                         // Verifica se a repetição desse dia nesse mês já passou; Caso sim, passar para o próximo mês possível
                         if (currentDate >= possibleNext)
@@ -168,7 +174,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                             nextValidDate = FindNextValidMonthAndYear(s, year, month + 1);
                             year = nextValidDate.nextValidYear;
                             month = nextValidDate.nextValidMonth;
-                            possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), currentDate.Offset);
+                            possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);
                         }                        
                                                 
                         return possibleNext;

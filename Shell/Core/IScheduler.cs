@@ -15,16 +15,18 @@ public interface IScheduler
     public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, uint ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
 }
 
-public struct SemanalRepeatDay(DayOfWeek dayOfWeek, TimeSpan time)
+public struct SemanalRepeatDay(DayOfWeek dayOfWeek, TimeSpan time, TimeZoneInfo timezone = null)
 {
     public DayOfWeek DayOfWeek { get; set; } = dayOfWeek;
     public TimeSpan TimeOfDay { get; set; } = time;
+    public TimeZoneInfo TimeZone { get; set; } = timezone ??= TimeZoneInfo.Local;
 }
 
-public struct MonthlyRepeatDate(int dayOfMonth, TimeSpan time)
+public struct MonthlyRepeatDate(int dayOfMonth, TimeSpan time, TimeZoneInfo timezone = null)
 {
     public int DayOfMonth { get; set; } = dayOfMonth;
     public TimeSpan TimeOfDay { get; set; } = time;
+    public TimeZoneInfo TimeZone { get; set; } = timezone ??= TimeZoneInfo.Local;
 
     public bool IsValidDay(int month, int year)
     {
