@@ -55,10 +55,19 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     }
 
     public async Task<bool> Shutdown()
-    {        
+    {
+        Console.WriteLine((this as IModule).LogName + " shutting down, trying to save data");
         await cancellationToken.CancelAsync();
-        await SaveData();
-        return true;
+        if (await SaveData())
+        {
+            Console.WriteLine((this as IModule).LogName + " saved successfully.");
+            return true;
+        }
+        else
+        {
+            Console.WriteLine((this as IModule).LogName + " failed to save data.");
+            return false;
+        }        
     }
 
     public async Task<bool> SaveData()

@@ -164,7 +164,10 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
     public async Task Stop()
     {
-        Console.Write("Stopping shell");
+        Console.ForegroundColor = ConsoleColor.DarkRed;
+        Console.WriteLine("Stopping container");
+        Console.ResetColor();
+
         await SaveData();
         await Shutdown();
     }

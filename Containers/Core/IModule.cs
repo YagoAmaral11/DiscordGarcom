@@ -26,7 +26,20 @@ public interface IModule
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb);
 
     public Task Start();
-    public async Task<bool> Shutdown() => await SaveData();
+    public async Task<bool> Shutdown()
+    {
+        Console.WriteLine(LogName + " shutting down, trying to save data");
+        if (await SaveData())
+        {
+            Console.WriteLine(LogName + " saved successfully.");
+            return true;
+        }
+        else
+        {
+            Console.WriteLine(LogName + " failed to save data.");
+            return false;
+        }
+    }
 
     public Task<bool> SaveData();    
 
