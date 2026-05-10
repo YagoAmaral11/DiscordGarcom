@@ -1,6 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
-using GarçomDoKitts.Shell.IO;
+using GarçomDoKitts.Containers.IO;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Shell.Core.Modules;
+namespace GarçomDoKitts.Containers.Core.Modules;
 
 public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 {
@@ -81,157 +81,6 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
     public Task Start() => Task.CompletedTask;    
 
-    public class ScheduledCallback
-    {
-        public ScheduledCallback()
-        {
-            IntervalRepeat_Interval = null;
-            SemanalRepeat_Days = null;
-            MonthlyRepeat_Dates = null;
-            YearlyRepeat_Dates = null;
-            Parameters = null;
-        }
-
-        // Agendamento do callback, com informação dos horários, se deve repetir, etc.
-        public ScheduleType ScheduleType { get; set; }
-        public DateTimeOffset NextExecution { get; set; }
-        public TimeSpan? IntervalRepeat_Interval { get; set; }
-        public SemanalRepeatDay[] SemanalRepeat_Days { get; set; }
-        public MonthlyRepeatDate[] MonthlyRepeat_Dates { get; set; }
-        public DateTimeOffset[] YearlyRepeat_Dates { get; set; }
-
-        // ID do callback; Pode ser usado pelas classes clientes para gerenciar callbacks agendados, evitando duplicações de agendamentos para a mesma coisa
-        public uint ID { get; set; }
-        // Se verdadeiro, o Scheduler automaticamente verifica se já existe um callback com o mesmo ID e Owner antes de agendar um novo; Se existir, o novo não é agendado. Útil para evitar agendamentos duplicados.        
-        // Se falso, o callback é sempre agendado (Útil para callbacks únicos/dinâmicos). Não é possil rastrear ou cancelar esses tipos de callbacks
-        public bool ManageID { get; set; } = true;
-        // SchedulableModule dono do callback
-        public SchedulableModule Owner { get; set; }
-        // Callback a ser executado, para que possa ser serializado e buscado em runtime por reflection, permitindo o callback e persistência (MethodInfo)
-        public MethodInfo MethodInfo { get; set; }
-        // Parâmetros do callback, se houver (Array de objects)
-        public object[] Parameters { get; set; }        
-
-
-
-        public DateTimeOffset? NextRepeatDate()
-        {
-            DateTimeOffset? nextRepeat = null;
-            DateTimeOffset currentDate = DateTimeOffset.Now;            
-
-            switch (ScheduleType)
-            {
-                case ScheduleType.Once:
-                    nextRepeat = null;
-                    break;
-                case ScheduleType.IntervalRepeat:
-                    nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value);
-                    break;
-                case ScheduleType.SemanalRepeat:                    
-                    // Cria, de acordo com os dias de repetição semanais, os próximos dias de repetição
-                    // Depois ordena por ordem cronológica e seleciona o primeiro (mais próximo)                    
-
-                    nextRepeat = SemanalRepeat_Days.Select
-                    (
-                        s =>
-                        {
-                            // Verifica a diferença do dia de repetição e o dia atual, 
-                            // depois adiciona 7 dias para os casos onde o dia atual já passou o dia de repetição                                
-                            int dif = ((int) s.DayOfWeek - (int) currentDate.DayOfWeek + 7) % 7;
-
-                            // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
-                            // Caso contrário, essa repetição deve ser da próxima semana
-                            DateTime dataAtual = currentDate.Date;
-                            DateTime dataRepetição = new DateTime(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks));
-                            DateTimeOffset dataRepetiçãoOffset = TimeZoneInfo.ConvertTime(dataRepetição, s.TimeZone);
-
-                            if (dif == 0 && currentDate >= dataRepetiçãoOffset)
-                                dif = 7;
-                            
-                            return TimeZoneInfo.ConvertTime(currentDate.Date.AddDays(dif).Add(s.TimeOfDay), s.TimeZone);
-                        }
-                    ).Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();                    
-
-                    break;
-                case ScheduleType.MonthlyRepeat:
-                    // Cria, de acordo com os dias de repetição mensais, os próximos dias de repetição
-                    // Depois, ordena cronologicamente e seleciona o mais próximo
-                    var candidates = MonthlyRepeat_Dates.Select(s =>
-                    {
-                        int year = currentDate.Year;
-                        int month = currentDate.Month;       
-                        
-                        // Garante que o mês desse dia mensal de repetição será válido
-                        var nextValidDate = FindNextValidMonthAndYear(s, year, month);
-                        year = nextValidDate.nextValidYear;
-                        month = nextValidDate.nextValidMonth;
-
-                        // Cria o dia válido desse dia de repetição mensal
-                        var possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                        
-
-                        // Verifica se a repetição desse dia nesse mês já passou; Caso sim, passar para o próximo mês possível
-                        if (currentDate >= possibleNext)
-                        {
-                            nextValidDate = FindNextValidMonthAndYear(s, year, month + 1);
-                            year = nextValidDate.nextValidYear;
-                            month = nextValidDate.nextValidMonth;
-                            possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);
-                        }                        
-                                                
-                        return possibleNext;
-                    });
-
-                    nextRepeat = candidates.Where(c => c > currentDate).OrderBy(c => c).FirstOrDefault();        
-                    break;
-                case ScheduleType.YearlyRepeat:                         
-                    // Filtra as datas que já passaram, ordena e seleciona a mais próxima
-                    nextRepeat = YearlyRepeat_Dates.Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();
-                    break;
-            }
-
-            return nextRepeat;
-        }
-
-        public static (int nextValidMonth, int nextValidYear) FindNextValidMonthAndYear(MonthlyRepeatDate s, int year, int month)
-        {
-            // Procura o próximo mês que tem esse dia
-            while (true)
-            {
-                if (month > 12) { month = 1; year++; }
-
-                if (s.IsValid(month, year))
-                {
-                    return (month, year);
-                }
-
-                month++;
-            }
-        }
-
-        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, uint ID, bool ManagedCallback = true)
-        {
-            ScheduledCallback c = new();
-
-            c.ID = ID;
-            c.ManageID = ManagedCallback;
-            c.Parameters = parameters;
-            c.MethodInfo = callback.Method;
-
-            SchedulableModule ownerModule = new();
-            ownerModule.ModuleType = callback.Method.DeclaringType;
-            c.Owner = ownerModule;
-
-            return c;
-        }
-
-    }
-
-    public class SchedulableModule
-    {
-        // Como só é permitido um tipo de módulo por vez, podemos usar o Type para identificar o módulo
-        public Type ModuleType { get; set; }
-    }
-
 
 
     // Agenda novos callbacks e cancelar callbacks agendados (adicionar novo callback na fila, executar o scheduler)
@@ -282,6 +131,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             nextTask = DelayUntil(nextScheduledCallback.NextExecution, cancellationToken.Token);            
         }        
     }
+
 
     // Método que invoca e executa o callback registrado
     private void InvokeCallback(ScheduledCallback callback)
@@ -347,6 +197,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     }
     
 
+
     // Métodos de IScheduler, Criar métodos para criar diferentes tipos de callback, de acordo com seu tipo        
     public bool ScheduleCallback(Delegate callback, object[] parameters, uint ID, DateTimeOffset execution, bool ManagedCallback = true)
     {
@@ -400,6 +251,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
         return EnqueueNew(newCallback);
     }
+
 
 
     // Serializadores    
@@ -526,6 +378,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return serialized;
     }
 
+
     // Deserializadores
     public static ScheduledCallback DeserializeScheduledCallback(JsonObject serializedScheduledCallback)
     {
@@ -610,5 +463,160 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
         return obj;
     }
+
+
+
+    // Classes 
+    public class ScheduledCallback
+    {
+        public ScheduledCallback()
+        {
+            IntervalRepeat_Interval = null;
+            SemanalRepeat_Days = null;
+            MonthlyRepeat_Dates = null;
+            YearlyRepeat_Dates = null;
+            Parameters = null;
+        }
+
+        // Agendamento do callback, com informação dos horários, se deve repetir, etc.
+        public ScheduleType ScheduleType { get; set; }
+        public DateTimeOffset NextExecution { get; set; }
+        public TimeSpan? IntervalRepeat_Interval { get; set; }
+        public SemanalRepeatDay[] SemanalRepeat_Days { get; set; }
+        public MonthlyRepeatDate[] MonthlyRepeat_Dates { get; set; }
+        public DateTimeOffset[] YearlyRepeat_Dates { get; set; }
+
+        // ID do callback; Pode ser usado pelas classes clientes para gerenciar callbacks agendados, evitando duplicações de agendamentos para a mesma coisa
+        public uint ID { get; set; }
+        // Se verdadeiro, o Scheduler automaticamente verifica se já existe um callback com o mesmo ID e Owner antes de agendar um novo; Se existir, o novo não é agendado. Útil para evitar agendamentos duplicados.        
+        // Se falso, o callback é sempre agendado (Útil para callbacks únicos/dinâmicos). Não é possil rastrear ou cancelar esses tipos de callbacks
+        public bool ManageID { get; set; } = true;
+        // SchedulableModule dono do callback
+        public SchedulableModule Owner { get; set; }
+        // Callback a ser executado, para que possa ser serializado e buscado em runtime por reflection, permitindo o callback e persistência (MethodInfo)
+        public MethodInfo MethodInfo { get; set; }
+        // Parâmetros do callback, se houver (Array de objects)
+        public object[] Parameters { get; set; }
+
+
+        public DateTimeOffset? NextRepeatDate()
+        {
+            DateTimeOffset? nextRepeat = null;
+            DateTimeOffset currentDate = DateTimeOffset.Now;
+
+            switch (ScheduleType)
+            {
+                case ScheduleType.Once:
+                    nextRepeat = null;
+                    break;
+                case ScheduleType.IntervalRepeat:
+                    nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value);
+                    break;
+                case ScheduleType.SemanalRepeat:
+                    // Cria, de acordo com os dias de repetição semanais, os próximos dias de repetição
+                    // Depois ordena por ordem cronológica e seleciona o primeiro (mais próximo)                    
+
+                    nextRepeat = SemanalRepeat_Days.Select
+                    (
+                        s =>
+                        {
+                            // Verifica a diferença do dia de repetição e o dia atual, 
+                            // depois adiciona 7 dias para os casos onde o dia atual já passou o dia de repetição                                
+                            int dif = ((int) s.DayOfWeek - (int) currentDate.DayOfWeek + 7) % 7;
+
+                            // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
+                            // Caso contrário, essa repetição deve ser da próxima semana
+                            DateTime dataAtual = currentDate.Date;
+                            DateTime dataRepetição = new DateTime(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks));
+                            DateTimeOffset dataRepetiçãoOffset = TimeZoneInfo.ConvertTime(dataRepetição, s.TimeZone);
+
+                            if (dif == 0 && currentDate >= dataRepetiçãoOffset)
+                                dif = 7;
+
+                            return TimeZoneInfo.ConvertTime(currentDate.Date.AddDays(dif).Add(s.TimeOfDay), s.TimeZone);
+                        }
+                    ).Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();
+
+                    break;
+                case ScheduleType.MonthlyRepeat:
+                    // Cria, de acordo com os dias de repetição mensais, os próximos dias de repetição
+                    // Depois, ordena cronologicamente e seleciona o mais próximo
+                    var candidates = MonthlyRepeat_Dates.Select(s =>
+                    {
+                        int year = currentDate.Year;
+                        int month = currentDate.Month;
+
+                        // Garante que o mês desse dia mensal de repetição será válido
+                        var nextValidDate = FindNextValidMonthAndYear(s, year, month);
+                        year = nextValidDate.nextValidYear;
+                        month = nextValidDate.nextValidMonth;
+
+                        // Cria o dia válido desse dia de repetição mensal
+                        var possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);
+
+                        // Verifica se a repetição desse dia nesse mês já passou; Caso sim, passar para o próximo mês possível
+                        if (currentDate >= possibleNext)
+                        {
+                            nextValidDate = FindNextValidMonthAndYear(s, year, month + 1);
+                            year = nextValidDate.nextValidYear;
+                            month = nextValidDate.nextValidMonth;
+                            possibleNext = new DateTimeOffset(new DateOnly(year, month, s.DayOfMonth), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);
+                        }
+
+                        return possibleNext;
+                    });
+
+                    nextRepeat = candidates.Where(c => c > currentDate).OrderBy(c => c).FirstOrDefault();
+                    break;
+                case ScheduleType.YearlyRepeat:
+                    // Filtra as datas que já passaram, ordena e seleciona a mais próxima
+                    nextRepeat = YearlyRepeat_Dates.Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();
+                    break;
+            }
+
+            return nextRepeat;
+        }
+
+
+        public static (int nextValidMonth, int nextValidYear) FindNextValidMonthAndYear(MonthlyRepeatDate s, int year, int month)
+        {
+            // Procura o próximo mês que tem esse dia
+            while (true)
+            {
+                if (month > 12) { month = 1; year++; }
+
+                if (s.IsValid(month, year))
+                {
+                    return (month, year);
+                }
+
+                month++;
+            }
+        }
+
+        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, uint ID, bool ManagedCallback = true)
+        {
+            ScheduledCallback c = new();
+
+            c.ID = ID;
+            c.ManageID = ManagedCallback;
+            c.Parameters = parameters;
+            c.MethodInfo = callback.Method;
+
+            SchedulableModule ownerModule = new();
+            ownerModule.ModuleType = callback.Method.DeclaringType;
+            c.Owner = ownerModule;
+
+            return c;
+        }
+
+    }
+
+    public class SchedulableModule
+    {
+        // Como só é permitido um tipo de módulo por vez, podemos usar o Type para identificar o módulo
+        public Type ModuleType { get; set; }
+    }
+
 
 }

@@ -3,7 +3,7 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
-using GarçomDoKitts.Shell.Core;
+using GarçomDoKitts.Containers.Core;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -39,9 +39,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
     private CommandBuilder moduleCB = new(); // Usado para registrar os comandos do módulo
 
 
-
     [JsonIgnore] public string Name => "Frases";
-
 
 
     public List<Type> GetStaticCommands() => [];
@@ -90,12 +88,55 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return true;
     }
 
+    public async Task Start()
+    {
+        ready = false;
+        origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
+        broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(config.BroadcastChannelID);
+
+        await Fetch();
+
+        // Inicializa agendamentos        
+        SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
+        for (int i = 0; i < 7; i++)
+        {
+            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(config.DailyTime.Ticks), config.TimeZone);
+        }
+
+        scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
+
+        ready = true;
+    }
+
+
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb)
     {
         ehb.HandleMessageCreated(MessageCreated);
         ehb.HandleMessageDeleted(MessageDeleted);
         return Task.CompletedTask;
     }
+
+    private async Task LoadConfig()
+    {
+        FrasesConfig loadedConfig = await configPersistance.LoadConfig(this, typeof(FrasesConfig)) as FrasesConfig;
+        config = loadedConfig;
+    }
+
+    public async Task<bool> SaveData()
+    {
+        await persistance.WriteObject(data, typeof(FrasesData), Name + "Data");
+        return true;
+    }
+
+    public async Task LoadData()
+    {
+        if (await persistance.KeyExists(Name + "Data" + ".json"))
+        {
+            FrasesData loadedData = await persistance.ReadObject(Name + "Data", typeof(FrasesData)) as FrasesData;
+            data = loadedData;
+        }
+    }
+
 
     private Task MessageCreated(DiscordClient client, MessageCreatedEventArgs args)
     {
@@ -121,31 +162,32 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return Task.CompletedTask;
     }
 
-    private async Task LoadConfig()
+
+    // Seleciona e envia uma mensagem aleatória do canal de origem como resposta para o comando
+    [Command("Aleatoria")]
+    public async Task RandomMessage(CommandContext context)
     {
-        FrasesConfig loadedConfig = await configPersistance.LoadConfig(this, typeof(FrasesConfig)) as FrasesConfig;
-        config = loadedConfig;
+        if (context.Guild != serverContext.BindedDiscordServer || !ready)
+            return;
+
+        ulong messageID = ChooseRandomMessage();
+        DiscordMessage msg = await origin.GetMessageAsync(messageID);
+        DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
+        await context.RespondAsync(embed);
     }
 
-
-    public async Task Start()
+    // Reenvia a mensagem diária atual como resposta para o comando
+    [Command("Diaria")]
+    public async Task ResendDaily(CommandContext context)
     {
-        ready = false;
-        origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
-        broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(config.BroadcastChannelID);
-
-        await Fetch();
-
-        // Inicializa agendamentos        
-        SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
-        for (int i = 0; i < 7; i++)
-        {                      
-            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(config.DailyTime.Ticks), config.TimeZone);
+        if (daily != null)
+        {
+            await context.RespondAsync(CreateDailyMessageToSend(daily));
         }
-
-        scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
-
-        ready = true;
+        else
+        {
+            await context.RespondAsync("A mensagem diária não foi escolhida ainda");
+        }
     }
 
 
@@ -266,7 +308,6 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return cachedMessageIDs[index];
     }
 
-
     // Seleciona e envia uma mensagem diária aleatória do canal de origem para o canal de broadcast
     public async Task DailyMessage()
     {
@@ -279,34 +320,6 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));
     }
    
-
-
-    // Seleciona e envia uma mensagem aleatória do canal de origem como resposta para o comando
-    [Command("Aleatoria")]
-    public async Task RandomMessage(CommandContext context)
-    {
-        if (context.Guild != serverContext.BindedDiscordServer || !ready)
-            return;
-
-        ulong messageID = ChooseRandomMessage();
-        DiscordMessage msg = await origin.GetMessageAsync(messageID);
-        DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
-        await context.RespondAsync(embed);
-    }
-
-    // Reenvia a mensagem diária atual como resposta para o comando
-    [Command("Diaria")]
-    public async Task ResendDaily(CommandContext context)
-    {
-        if (daily != null)
-        {
-            await context.RespondAsync(CreateDailyMessageToSend(daily));
-        }
-        else
-        {
-            await context.RespondAsync("A mensagem diária não foi escolhida ainda");
-        }
-    }
 
     // Constrói um embed de frase padrão
     private DiscordEmbed CreateDailyMessageToSend(DiscordMessage msg) => EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.DailyEmbedTitle, config.DailyEmbedColorHex, msg.JumpLink.ToString());    
@@ -335,22 +348,6 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return embed.Build();
     }
 
-
-
-    public async Task<bool> SaveData()
-    {        
-        await persistance.WriteObject(data, typeof(FrasesData), Name + "Data");
-        return true;
-    }
-
-    public async Task LoadData()
-    {
-        if (await persistance.KeyExists(Name + "Data" + ".json"))
-        {
-            FrasesData loadedData = await persistance.ReadObject(Name + "Data", typeof(FrasesData)) as FrasesData;
-            data = loadedData;
-        }
-    }
 
 }
 
