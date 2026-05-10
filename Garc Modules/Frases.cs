@@ -49,8 +49,9 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         // moduleCB.WithDelegate(); TODO: Fazer com que o comando "frases" mostre ajuda ou algo do tipo
 
         var RandomMessageCB = CommandBuilder.From(RandomMessage).WithParent(moduleCB).WithDescription("Mostra uma frase aleatória do canal de frases");
+        var DailyMessageCB = CommandBuilder.From(ResendDaily).WithParent(moduleCB).WithDescription("Mostra a frase diária atual");
 
-        moduleCB.WithSubcommands([RandomMessageCB]);
+        moduleCB.WithSubcommands([RandomMessageCB, DailyMessageCB]);
         
         return [moduleCB];
     }
@@ -83,7 +84,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
             throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
         }
 
-        await LoadData();
+        await LoadData();        
 
         return true;
     }
@@ -93,6 +94,9 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         ready = false;
         origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
         broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(config.BroadcastChannelID);
+
+        if (data is not null)
+            daily = await origin.GetMessageAsync(data.DailyID);
 
         await Fetch();
 
@@ -186,7 +190,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         }
         else
         {
-            await context.RespondAsync("A mensagem diária não foi escolhida ainda");
+            await context.RespondAsync("Muito cedo chefe!\nA mensagem diária não foi escolhida ainda");
         }
     }
 
@@ -316,7 +320,10 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         ulong messageID = ChooseRandomMessage();
         DiscordMessage msg = await origin.GetMessageAsync(messageID);
+
         daily = msg;        
+        data.DailyID = msg.Id;
+
         await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));
     }
    
@@ -353,7 +360,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
 public class FrasesData
 {
-    [JsonInclude] public string DailyID { get; set; } // O ID da mensagem diária atual
+    [JsonInclude] public ulong DailyID { get; set; } // O ID da mensagem diária atual
 }
 
 public class FrasesConfig
