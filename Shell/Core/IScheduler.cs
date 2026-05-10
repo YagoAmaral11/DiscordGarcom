@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace GarçomDoKitts.Shell.Core;
 
@@ -53,4 +55,18 @@ public enum ScheduleType
     SemanalRepeat, // Executa em dias específicas da semana
     MonthlyRepeat, // Executa em dias específicos do mês
     YearlyRepeat, // Executa em datas específicas do ano
+}
+
+public class TimeZoneInfoConverter : JsonConverter<TimeZoneInfo>
+{
+    public override TimeZoneInfo Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var id = reader.GetString();
+        return id != null ? TimeZoneInfo.FindSystemTimeZoneById(id) : null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, TimeZoneInfo value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.Id);
+    }
 }

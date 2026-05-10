@@ -18,7 +18,8 @@ public class FileSystem : IPersistance, IConfigPersistance
     public static readonly string ConfigFolderPath = "config/";
     public static readonly JsonSerializerOptions serializerOptions = new()
     {
-        WriteIndented = true,                  
+        WriteIndented = true,                          
+        Converters = { new TimeZoneInfoConverter() } 
     };
 
     private async Task Write(string ToWrite, string acessKey, string fileExtension = ".json")

@@ -55,8 +55,9 @@ public class CoreShell(IPersistance persistance, IEnumerable<IModule> modules, u
     public async Task Stop()
     {
         Console.Write("Stopping shell");
+        await SaveData();
         await Shutdown();
-    }
+    }    
 
     public bool TryGetModule<T>(out T Module) where T : IModule
     {
@@ -105,7 +106,11 @@ public class CoreShell(IPersistance persistance, IEnumerable<IModule> modules, u
         if (persistance == null)
         {
             throw new Exception("Persistance is not assigned");
-        }        
+        }
+
+        // Garante que o método de parada seja chamado quando o processo for encerrado
+        AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
+        Console.CancelKeyPress += Console_CancelKeyPress;   
 
         // Obtem tokens e comandos
         Token = persistance.ReadRaw(TokenAcessKey).Result;        
@@ -201,9 +206,20 @@ public class CoreShell(IPersistance persistance, IEnumerable<IModule> modules, u
             await module.Start();
         }
 
-        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui
+        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui        
 
         return true;
+    }
+
+    private void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+    {
+        e.Cancel = true; // Impede o encerramento imediato do processo para garantir que o método de parada seja chamado        
+        Environment.Exit(-1); // Encerra o processo após a execução do método de parada
+    }
+
+    private void CurrentDomain_ProcessExit(object sender, EventArgs e)
+    {
+        Stop().Wait();        
     }
 
     private bool VerifyDuplicatedModules()

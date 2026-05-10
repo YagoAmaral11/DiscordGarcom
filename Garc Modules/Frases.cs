@@ -71,6 +71,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         rng = new();
         this.serverContext = serverContext;
         services = serviceProvider;
+        config = new();
 
         if (await configPersistance.ConfigExists(this))
         {
@@ -83,6 +84,8 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
             await configPersistance.WriteConfig(this, config);
             throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
         }
+
+        await LoadData();
 
         return true;
     }
@@ -133,12 +136,11 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         await Fetch();
 
-        // Inicializa agendamentos
-        // TODO: Deve ser criado uma forma de informar o fuso horário; No momento, fica refém ao fuso horário do servidor  
+        // Inicializa agendamentos        
         SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
         for (int i = 0; i < 7; i++)
         {                      
-            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(config.DailyTime.Ticks));
+            semanalRepeatDays[i] = new SemanalRepeatDay((DayOfWeek) i, new TimeSpan(config.DailyTime.Ticks), config.TimeZone);
         }
 
         scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
@@ -341,6 +343,15 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return true;
     }
 
+    public async Task LoadData()
+    {
+        if (await persistance.KeyExists(Name + "Data" + ".json"))
+        {
+            FrasesData loadedData = await persistance.ReadObject(Name + "Data", typeof(FrasesData)) as FrasesData;
+            data = loadedData;
+        }
+    }
+
 }
 
 public class FrasesData
@@ -361,6 +372,7 @@ public class FrasesConfig
     [JsonInclude] public int DefaultDelayMs { get; private set; } = 1000; // Quanto tempo cada requisição aguarda no fetching de mensagens
     [JsonInclude] public int ErrorDelayMs { get; private set; } = 2000; // Quanto tempo o módulo aguarda caso exista um problema no fetching das mensagens, um ratelimit por exemplo.
     [JsonInclude] public TimeOnly DailyTime { get; private set; } = new(12, 0); // Horário da mensagem diária
+    [JsonInclude] public TimeZoneInfo TimeZone { get; private set; } = TimeZoneInfo.Local; // Fuso horário para o horário da mensagem diária
 
     // Config Data (Embeds e Mensagens)
     [JsonInclude] public bool DoMesageLinkBtn { get; private set; } = true; // A cada frase enviada, adicionar um botão com o link para a mensagem original

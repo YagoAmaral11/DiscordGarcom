@@ -1,5 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
+using GarçomDoKitts.Shell.IO;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,8 +39,8 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         this.serverContext = serverContext;
         JsonNode callbackArray;
 
-        if (await persistance.KeyExists("CoreSchedulerData"))
-            callbackArray = JsonNode.Parse(await persistance.ReadRaw("CoreSchedulerData"));
+        if (await persistance.KeyExists("CoreSchedulerData.json"))
+            callbackArray = JsonNode.Parse(await persistance.ReadJSON("CoreSchedulerData"));
         else
             callbackArray = new JsonArray([]);
 
@@ -71,9 +72,9 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
 
         JsonNode jsonNode = finalJson;
-        string json = jsonNode.ToJsonString();
-
-        await persistance.WriteRaw(json, "CoreSchedulerData");
+        string json = jsonNode.ToJsonString(FileSystem.serializerOptions);
+        
+        await persistance.WriteJSON(json, "CoreSchedulerData");
 
         return true;
     }
@@ -401,36 +402,61 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     }
 
 
-    // Serializadores
+    // Serializadores    
     public static JsonObject SerializeScheduledCallback(ScheduledCallback callback)
     {
         JsonObject serialized = new JsonObject();
         JsonValue scheduleType = JsonValue.Create<string>(callback.ScheduleType.ToString());
         JsonValue nextExecution = JsonValue.Create<DateTimeOffset>(callback.NextExecution);
-        JsonValue intervalRepeat_interval = JsonValue.Create<TimeSpan?>(callback.IntervalRepeat_Interval);
+        JsonValue intervalRepeat_interval = JsonValue.Create<TimeSpan?>(callback.IntervalRepeat_Interval);           
 
-        List<JsonValue> semanalRepeat_Days = new List<JsonValue>();
-        foreach (var day in callback.SemanalRepeat_Days)
+        JsonArray semanalRepeat_DaysArray;
+        if (callback.SemanalRepeat_Days != null && callback.SemanalRepeat_Days.Length > 0)
         {
-            semanalRepeat_Days.Add(JsonValue.Create<SemanalRepeatDay>(day));
+            List<JsonValue> semanalRepeat_Days = new List<JsonValue>();
+            foreach (var day in callback.SemanalRepeat_Days)
+            {
+                semanalRepeat_Days.Add(JsonValue.Create<SemanalRepeatDay>(day));
+            }
+            semanalRepeat_DaysArray = new JsonArray(semanalRepeat_Days.ToArray());
         }
-        JsonArray semanalRepeat_DaysArray = new JsonArray(semanalRepeat_Days.ToArray());
-
-
-        List<JsonValue> monthlyRepeat_Dates = new List<JsonValue>();
-        foreach (var date in callback.MonthlyRepeat_Dates)
+        else
         {
-            monthlyRepeat_Dates.Add(JsonValue.Create<MonthlyRepeatDate>(date));
+            semanalRepeat_DaysArray = new JsonArray();
         }
-        JsonArray monthlyRepeat_DatesArray = new JsonArray(monthlyRepeat_Dates.ToArray());
 
 
-        List<JsonValue> datesRepeat_Dates = new List<JsonValue>();
-        foreach (var date in callback.YearlyRepeat_Dates)
+        JsonArray monthlyRepeat_DatesArray;
+        if (callback.MonthlyRepeat_Dates != null && callback.MonthlyRepeat_Dates.Length > 0)
         {
-            datesRepeat_Dates.Add(JsonValue.Create<DateTimeOffset>(date));
+            List<JsonValue> monthlyRepeat_Dates = new List<JsonValue>();
+            foreach (var date in callback.MonthlyRepeat_Dates)
+            {
+                monthlyRepeat_Dates.Add(JsonValue.Create<MonthlyRepeatDate>(date));
+            }
+            monthlyRepeat_DatesArray = new JsonArray(monthlyRepeat_Dates.ToArray());
         }
-        JsonArray datesRepeat_DatesArray = new JsonArray(datesRepeat_Dates.ToArray());
+        else
+        {
+            monthlyRepeat_DatesArray = new JsonArray();
+        }
+
+
+
+        JsonArray datesRepeat_DatesArray;
+        if (callback.YearlyRepeat_Dates != null && callback.YearlyRepeat_Dates.Length > 0)
+        {
+            List<JsonValue> datesRepeat_Dates = new List<JsonValue>();
+            foreach (var date in callback.YearlyRepeat_Dates)
+            {
+                datesRepeat_Dates.Add(JsonValue.Create<DateTimeOffset>(date));
+            }
+            datesRepeat_DatesArray = new JsonArray(datesRepeat_Dates.ToArray());
+        }
+        else
+        {
+            datesRepeat_DatesArray = new JsonArray();
+        }
 
 
         JsonValue id = JsonValue.Create<uint>(callback.ID);
@@ -439,10 +465,13 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         JsonObject methodInfo = SerializeMethodInfo(callback.MethodInfo);        
 
         JsonArray parameters = new JsonArray();
-        foreach (var param in callback.Parameters)
+        if (callback.Parameters != null && callback.Parameters.Length > 0)
         {
-            parameters.Add(SerializeObject(param));
-        }
+            foreach (var param in callback.Parameters)
+            {
+                parameters.Add(SerializeObject(param));
+            }
+        }        
 
         serialized["ScheduleType"] = scheduleType;
         serialized["NextExecution"] = nextExecution;
@@ -512,21 +541,21 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         List<SemanalRepeatDay> semanalDays = [];
         foreach (var day in serializedScheduledCallback["SemanalRepeat_Days"].AsArray())
         {            
-            semanalDays.Add(JsonSerializer.Deserialize<SemanalRepeatDay>(day));
+            semanalDays.Add(JsonSerializer.Deserialize<SemanalRepeatDay>(day, FileSystem.serializerOptions));
         }
         callback.SemanalRepeat_Days = semanalDays.ToArray();
 
         List<MonthlyRepeatDate> monthlyDates = [];
         foreach (var date in serializedScheduledCallback["MonthlyRepeat_Dates"].AsArray())
         {
-            monthlyDates.Add(JsonSerializer.Deserialize<MonthlyRepeatDate>(date));
+            monthlyDates.Add(JsonSerializer.Deserialize<MonthlyRepeatDate>(date, FileSystem.serializerOptions));
         }
         callback.MonthlyRepeat_Dates = monthlyDates.ToArray();
 
         List<DateTimeOffset> datesRepeatDates = [];
         foreach (var date in serializedScheduledCallback["DatesRepeat_Dates"].AsArray())
         {
-            datesRepeatDates.Add(JsonSerializer.Deserialize<DateTimeOffset>(date));
+            datesRepeatDates.Add(JsonSerializer.Deserialize<DateTimeOffset>(date, FileSystem.serializerOptions));
         }
         callback.YearlyRepeat_Dates = datesRepeatDates.ToArray();
 
