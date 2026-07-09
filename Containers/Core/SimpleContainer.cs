@@ -231,8 +231,11 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         throw new KeyNotFoundException("Could not find any module of the type " + moduleType.AssemblyQualifiedName);
     }
+    public IEnumerable<IModule> GetAllModules()
+    {
+        return modules;
+    }
 
-        
     private bool VerifyDuplicatedModules()
     {
         HashSet<Type> modulesTypes = new();

@@ -1,6 +1,7 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Entities;
 using System;
+using System.Collections.Generic;
 
 namespace GarçomDoKitts.Containers.Core;
 
@@ -15,4 +16,5 @@ public interface IServerContext
     public T GetModule<T>() where T : IModule; 
     public bool TryGetModule<T>(out T Module) where T : IModule;
     public object GetModule(Type moduleType);
+    public IEnumerable<IModule> GetAllModules();
 }

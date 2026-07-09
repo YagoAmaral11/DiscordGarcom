@@ -11,10 +11,13 @@ public static class Init
     public static async Task Main(string[] args)
     {
         FileSystem fileSystem = new();
+
         CoreScheduler scheduler = new(fileSystem);
+        CoreBackuper backuper = new(fileSystem, fileSystem, scheduler);
+
         Frases garcKFrasesModule = new(fileSystem, fileSystem, scheduler);                
 
-        SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler], LinkedServerID: 832773492738490448);        
+        SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler, backuper], LinkedServerID: 832773492738490448);        
 
         if (await garcKittsShell.Start())
         {            
