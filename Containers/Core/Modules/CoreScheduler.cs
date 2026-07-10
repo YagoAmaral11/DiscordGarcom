@@ -32,26 +32,12 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     
 
 
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
     {
         // TODO: Carregar as configurações do Scheduler        
-
-        this.serverContext = serverContext;
-        JsonNode callbackArray;
-
-        if (await persistance.KeyExists("CoreSchedulerData.json"))
-            callbackArray = JsonNode.Parse(await persistance.ReadJSON("CoreSchedulerData"));
-        else
-            callbackArray = new JsonArray([]);
-
-        foreach (var JsonObject in callbackArray.AsArray())
-        {
-            ScheduledCallback callback = DeserializeScheduledCallback(JsonObject.AsObject());
-            EnqueueNew(callback, false);
-        }
-               
-        RunScheduler();
-        return true;
+        this.serverContext = serverContext;        
+        
+        return Task.FromResult(true);
     }
 
     public async Task<bool> Shutdown()
@@ -88,8 +74,27 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return true;
     }
 
-    public Task Start() => Task.CompletedTask;    
+    public async Task PreStart_1()
+    {
+        JsonNode callbackArray;
 
+        if (await persistance.KeyExists("CoreSchedulerData.json"))
+            callbackArray = JsonNode.Parse(await persistance.ReadJSON("CoreSchedulerData"));
+        else
+            callbackArray = new JsonArray([]);
+
+        foreach (var JsonObject in callbackArray.AsArray())
+        {
+            ScheduledCallback callback = DeserializeScheduledCallback(JsonObject.AsObject());
+            EnqueueNew(callback, false);
+        }
+
+        RunScheduler();
+    }
+
+    public Task PreStart_0() => Task.CompletedTask;
+
+    public Task Start() => Task.CompletedTask;    
 
 
     // Agenda novos callbacks e cancelar callbacks agendados (adicionar novo callback na fila, executar o scheduler)
@@ -128,7 +133,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         {
             ScheduledCallback expiredCallback = scheduledCallbacksQueue.Dequeue();
             scheduledCallbacksDict.Remove((expiredCallback.ID, expiredCallback.Owner.ModuleType));
-            InvokeCallback(expiredCallback);
+            InvokeCallback(expiredCallback).Wait();
             DispatchCallback(expiredCallback);
         }
 
@@ -143,13 +148,25 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
 
     // Método que invoca e executa o callback registrado
-    private void InvokeCallback(ScheduledCallback callback)
+    private async Task InvokeCallback(ScheduledCallback callback)
     {        
         MethodInfo method = callback.MethodInfo;
         Type type = callback.Owner.ModuleType;
         object instance = serverContext.GetModule(type);
 
-        method.Invoke(instance, callback.Parameters);        
+        try
+        {
+            object task = method.Invoke(instance, callback.Parameters);
+
+            if (task is Task _task)
+            {
+                await _task;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine((this as IModule).LogName + " Error invoking callback " + method + ": "+ ex.Message);
+        }
     }
 
     // Método que lida com o fim do agendamento e cria um novo callback de acordo com o tipo do callback, se necessário

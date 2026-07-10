@@ -151,6 +151,22 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         shellGuild = val;
         initialTime = DateTime.Now;
 
+        // Pre-começa a execução dos módulos
+        foreach (IModule module in modules)
+        {
+            await module.PreStart_0();
+        }
+
+        foreach (IModule module in modules)
+        {
+            await module.PreStart_1();
+        }
+
+        foreach (IModule module in modules)
+        {
+            await module.PreStart_2();
+        }
+
         // Começa a execução dos módulos
         foreach (IModule module in modules)
         {

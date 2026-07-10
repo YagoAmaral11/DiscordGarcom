@@ -56,6 +56,8 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         return true;
     }    
 
+    public Task PreStart_0() => Task.CompletedTask;
+
     public Task Start()
     {
         // Inicializa agendamentos
@@ -92,12 +94,14 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
     public async Task RealizeBackupCmd(CommandContext ctx)
     {
         // TODO: Limitar isso à somente administradores do bot
+        await ctx.DeferResponseAsync();
+
         if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
         {
             await ctx.RespondAsync("Você não tem permissão para usar esse comando.");
             return;
         }
-
+        
         await RealizeBackup();
         await ctx.RespondAsync("Backup realizado");
     }

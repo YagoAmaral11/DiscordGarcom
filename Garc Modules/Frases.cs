@@ -89,7 +89,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return true;
     }
 
-    public async Task Start()
+    public async Task PreStart_0()
     {
         ready = false;
         origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
@@ -100,6 +100,11 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         await Fetch();
 
+        ready = true;
+    }
+
+    public Task Start()
+    {        
         // Inicializa agendamentos        
         SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
         for (int i = 0; i < 7; i++)
@@ -108,8 +113,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         }
 
         scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
-
-        ready = true;
+        return Task.CompletedTask;
     }
 
 
@@ -318,13 +322,13 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         if (!config.DoDaily)
             return;
 
-        ulong messageID = ChooseRandomMessage();
-        DiscordMessage msg = await origin.GetMessageAsync(messageID);
+        ulong messageID = ChooseRandomMessage();        
+        DiscordMessage msg = await origin.GetMessageAsync(messageID);        
 
         daily = msg;        
         data.DailyID = msg.Id;
 
-        await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));
+        await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));        
     }
    
 

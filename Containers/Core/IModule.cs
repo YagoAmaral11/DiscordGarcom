@@ -9,8 +9,10 @@ namespace GarçomDoKitts.Containers.Core;
 /*  ORDEM DE CHAMADA DOS MÉTODOS:     
  *  1. Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)
  *  2. ConfigureEventHandlers (Usado para receber eventos do bot)
- *  3. Start (Usado assim que o bot se conecta ao servidor e está prestes a executar; Se precisar usar outro módulo, use aqui;)
- * 
+ *  3. Pre-Start 0 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  4. Pre-Start 1 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  5. Pre-Start 2 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  6. Start (Usado assim que o bot se conecta ao servidor e está prestes a executar; Se precisar usar outro módulo, use aqui)
  */
 
 public interface IModule
@@ -25,6 +27,9 @@ public interface IModule
     public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider);
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb);
 
+    public Task PreStart_0();
+    public Task PreStart_1() => Task.CompletedTask;
+    public Task PreStart_2() => Task.CompletedTask;
     public Task Start();
     public async Task<bool> Shutdown()
     {
