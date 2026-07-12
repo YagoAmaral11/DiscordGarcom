@@ -12,6 +12,12 @@ using System.Threading.Tasks;
 
 namespace GarçomDoKitts.Containers.Core.Modules;
 
+/*
+ *  OBS: Ao usar o CoreScheduler, garantir com que os métodos dos módulos em callback possam ser chamados em PreStart_1, 
+ *       ou registrar apenas métodos que registrem uma "fila de chamados" que sejam executados posteriormente quando o módulo esteja realmente pronto. Isto é, 
+ *       o método registrar que ele foi chamado e só realmente executar sua lógica depois, com o próprio módulo que usa o CoreScheduler sendo responsável por isso.
+ */
+
 public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 {
     public string Name => "Core Scheduler";

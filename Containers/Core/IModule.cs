@@ -27,10 +27,12 @@ public interface IModule
     public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider);
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb);
 
-    public Task PreStart_0();
+    public Task PreStart_0() => Task.CompletedTask;
     public Task PreStart_1() => Task.CompletedTask;
     public Task PreStart_2() => Task.CompletedTask;
+
     public Task Start();
+
     public async Task<bool> Shutdown()
     {
         Console.WriteLine(LogName + " shutting down, trying to save data");
