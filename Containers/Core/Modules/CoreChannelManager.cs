@@ -1,4 +1,5 @@
 ﻿using DSharpPlus;
+using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using GarçomDoKitts.GarcModules;
@@ -13,8 +14,7 @@ namespace GarçomDoKitts.Containers.Core.Modules;
 
 public class CoreChannelManager(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
 {
-
-    public string Name => "Core Channel Manager";
+    public string Name => "CoreChannelManager";
 
     private IPersistance persistance = persistance;
     private IConfigPersistance configPersistance = configPersistance;
@@ -22,7 +22,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
     private IServerContext serverContext;
 
     private ChannelManagerConfig config;
-    private ChannelManagerData data;
+    private ChannelManagerData data = new();
 
     private DiscordChannel RootTempChannels;
 
@@ -30,21 +30,45 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
 
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb)
     {
-        // TODO: Escutar para eventos de exclusão de canais, para verificar se algum canal temporário foi excluído manualmente, e então remover do registro
-        throw new NotImplementedException();
+        ehb.HandleChannelDeleted((_, deletionArgs) =>
+            {
+                if (deletionArgs.Guild == serverContext.BindedDiscordServer && data.TempChannels.Any(reg => reg.ChannelID == deletionArgs.Channel.Id))
+                {
+                    data.TempChannels.RemoveAll(reg => reg.ChannelID == deletionArgs.Channel.Id);
+                }
+
+                return Task.CompletedTask;
+            }
+        );
+
+        return Task.CompletedTask;
     }
 
     public IEnumerable<CommandBuilder> GetDynamicCommands()
-    {
-        // TODO: Adicionar comandos para criar canais temporários, listar canais temporários, deletar canais temporários, etc.
-        throw new NotImplementedException();
+    {                
+        CommandBuilder canaisTempCB = new();
+        canaisTempCB.WithName("canaltemp");
+
+        var createTempChannelCmd = CommandBuilder.From(CreateTemporaryChannelCmd).WithDescription("Cria um canal temporário com tempo de vida passado").WithParent(canaisTempCB);
+        createTempChannelCmd.Parameters[0].Description = "Duração. Pode ser expresso nos formatos XXhYYmZZs ou XX:YY:ZZ";
+        createTempChannelCmd.Parameters[1].Description = "Se sim, apenas o dono pode, mas poderá puxar outros membros";
+        createTempChannelCmd.Parameters[2].Description = "O nome para o canal";        
+
+        var listTempChannelsCmd = CommandBuilder.From(ListTemporaryChannelsCmd).WithDescription("Lista os canais temporários que você possui").WithParent(canaisTempCB);        
+
+        var deleteTempChannelCmd = CommandBuilder.From(DeleteTemporaryChannelCmd).WithDescription("Deleta um canal temporário que você possui").WithParent(canaisTempCB);
+        deleteTempChannelCmd.Parameters[0].Description = "ID, link ou menção do canal. Canais de voz podem ser mencionados com #!";
+
+        canaisTempCB.WithSubcommands([createTempChannelCmd, listTempChannelsCmd, deleteTempChannelCmd]);
+
+        return [canaisTempCB];
     }
 
-    public List<Type> GetStaticCommands() => [];    
+    public List<Type> GetStaticCommands() => [];
 
 
     public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
-    {        
+    {
         IModule mod = this;
 
         if (persistance == null)
@@ -52,8 +76,8 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
 
         if (configPersistance == null)
             throw new Exception(mod.LogName + "IConfigPersistance is not assigned to the module");
-        
-        this.serverContext = serverContext;        
+
+        this.serverContext = serverContext;
         config = new();
 
         if (await configPersistance.ConfigExists(this))
@@ -71,7 +95,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         await LoadData();
 
         return true;
-    }    
+    }
 
     public async Task PreStart_0()
     {
@@ -79,8 +103,20 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         ready = true;
     }
 
-    public Task Start() => Task.CompletedTask;    
+    public async Task Start()
+    {
+        // Remove qualquer registro de canal temporário que não exista mais no servidor
+        var channels = await serverContext.BindedDiscordServer.GetChannelsAsync();
+        var channelDic = channels.ToDictionary(c => c.Id, c => c);
 
+        foreach (var reg in data.TempChannels.ToList())
+        {
+            if (channelDic.ContainsKey(reg.ChannelID) == false)
+            {
+                data.TempChannels.Remove(reg);
+            }
+        }
+    }
 
 
     private async Task LoadConfig()
@@ -95,84 +131,119 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         {
             ChannelManagerData loadedData = await persistance.ReadObject(Name + "Data", typeof(ChannelManagerData)) as ChannelManagerData;
             data = loadedData;
-        }            
+        }
     }
 
-    public Task<bool> SaveData()
+    public async Task<bool> SaveData()
     {
-        throw new NotImplementedException();
+        await persistance.WriteObject(data, typeof(ChannelManagerData), Name + "Data");
+        return true;
     }
 
 
 
-    public async Task<TempChannelRegistry> NewGeneralTempChannel(DateTimeOffset exclusion, string name = null)
+    public async Task<(TempChannelRegistry, DiscordChannel)> NewGeneralTempChannel(DateTimeOffset exclusion, string name = null)
     {
         if (!ready)
-            return null;
+            return (null, null);
 
         name ??= config.GeneralTempChannelNameSecPrefix + config.DefaultGeneralTempChannelName;
 
-        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels);
+        string reason = "Creating new temp channel " + name;
+        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels, reason: reason);
         var reg = NewRegistry(exclusion, channel.Id);
 
-        // TODO: Adicionar lógica para deletar o canal após o tempo de exclusão, usando o IScheduler
+        scheduler.ScheduleCallback(DeleteTempChannel, [channel.Id], (ulong) DateTimeOffset.Now.Ticks, exclusion, false);
 
-        return reg;
+        return (reg, channel);
     }
 
-    public async Task<TempChannelRegistry> NewOwnedTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
+    public async Task<(TempChannelRegistry, DiscordChannel)> NewOwnedTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
     {
         if (!ready)
-            return null;
-        
+            return (null, null);
+
         DiscordMember owner = await serverContext.BindedDiscordServer.GetMemberAsync(ownerID);
 
         if (UserCanCreateTempChannel(ownerID) == false)
-            return null;
+            return (null, null);
 
         name ??= config.OwnedTempChannelNameSecPrefix + config.OwnedTempChannelName + owner.DisplayName;
 
-        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels);
+        string reason = "Creating temp channel for user " + owner.DisplayName + " (User ID: " + owner.Id + ")";
+        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels, reason: reason);
         var reg = NewRegistry(exclusion, channel.Id, ownerID);
 
-        // TODO: Adicionar lógica para deletar o canal após o tempo de exclusão, usando o IScheduler
+        scheduler.ScheduleCallback(DeleteTempChannel, [channel.Id], (ulong) DateTimeOffset.Now.Ticks, exclusion, false);
 
-        return reg;
+        return (reg, channel);
     }
 
-    public async Task<TempChannelRegistry> NewPrivateTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
+    public async Task<(TempChannelRegistry, DiscordChannel)> NewPrivateTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
     {
         if (!ready)
-            return null;
+            return (null, null);
 
         DiscordMember owner = await serverContext.BindedDiscordServer.GetMemberAsync(ownerID);
 
         if (UserCanCreateTempChannel(ownerID) == false)
-            return null;
+            return (null, null);
 
         name ??= config.PrivateTempChannelNameSecPrefix + config.PrivateTempChannelName + owner.DisplayName;
 
-        DiscordOverwriteBuilder overwriteEveryone = new DiscordOverwriteBuilder(serverContext.BindedDiscordServer.EveryoneRole);        
+        DiscordOverwriteBuilder overwriteEveryone = new DiscordOverwriteBuilder(serverContext.BindedDiscordServer.EveryoneRole);
         overwriteEveryone.Deny(DiscordPermission.SendMessages);
         overwriteEveryone.Deny(DiscordPermission.Connect);
 
-        DiscordOverwriteBuilder overwriteOwner = new DiscordOverwriteBuilder(owner);        
+        DiscordOverwriteBuilder overwriteOwner = new DiscordOverwriteBuilder(owner);
         overwriteOwner.Allow(DiscordPermission.Connect);
         overwriteOwner.Allow(DiscordPermission.MoveMembers);
 
         IEnumerable<DiscordOverwriteBuilder> overwrites = [overwriteEveryone, overwriteOwner];
 
-        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels, overwrites: overwrites);
+        string reason = "Creating private temp channel for user " + owner.DisplayName + " (User ID: " + owner.Id + ")";
+        DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels, overwrites: overwrites, reason: reason);
         var reg = NewRegistry(exclusion, channel.Id, ownerID);
 
-        // TODO: Adicionar lógica para deletar o canal após o tempo de exclusão, usando o IScheduler
+        scheduler.ScheduleCallback(DeleteTempChannel, [channel.Id], (ulong) DateTimeOffset.Now.Ticks, exclusion, false);
 
-        return reg;
+        return (reg, channel);
     }
 
 
-    // TODO: Criar um método para deletar os canais temporários
-    // TODO: Criar os métodos para os diferentes comandos de gerenciamento de canais temporários, como listar, deletar, etc.
+    public async Task DeleteTempChannel(ulong channelID)
+    {
+        // Verifica se o canal existe no registro
+        if (data.TempChannels.Select(reg => reg.ChannelID == channelID).Any())
+        {
+            data.TempChannels.RemoveAll(reg => reg.ChannelID == channelID);
+        }
+
+        // Deleta o canal do Discord
+        DiscordChannel channel = null; 
+
+        try
+        {
+            channel = await serverContext.BindedDiscordServer.GetChannelAsync(channelID);
+        }
+        catch
+        {
+        }
+
+        if (channel != null)
+        {
+            if (channel.Users.Count == 0)
+            {
+                await channel.DeleteAsync(Name + " deleting temp channel " + channel.Name + " (ID: " + channel.Id + ")");
+            }
+            else
+            {
+                // Tenta deletar o canal novamente após o tempo de exclusão máximo, caso ainda haja usuários no canal
+                scheduler.ScheduleCallback(DeleteTempChannel, [channelID], (ulong) DateTimeOffset.Now.Ticks, DateTimeOffset.Now.AddMilliseconds(config.TempChannelMaxOverlifeTimeMs), false);
+            }
+        }
+    }
+
 
     private TempChannelRegistry NewRegistry(DateTimeOffset exclusion, ulong channelID, ulong owner = 0)
     {
@@ -197,7 +268,98 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return registry;
     }
 
-    public bool UserCanCreateTempChannel(ulong userID) => data.TempChannels.Select(r => r.IsOwned && r.OwnerID == userID).Count() < config.TempChannelCountPerUser;    
+    public bool UserCanCreateTempChannel(ulong userID) => data.TempChannels.Select(r => r.IsOwned && r.OwnerID == userID).Count() < config.TempChannelCountPerUser;
+
+    
+    [Command("criar")]    
+    public async Task CreateTemporaryChannelCmd(CommandContext ctx, TimeSpan duration, bool isPrivate = false, string name = null)
+    {
+        try
+        {
+            await ctx.DeferResponseAsync();
+        }
+        catch
+        {
+            return;
+        }
+        
+        DateTimeOffset exclusionTime = DateTimeOffset.Now.Add(duration);
+
+        if (UserCanCreateTempChannel(ctx.Member.Id))
+        {
+            if (isPrivate == false)
+            {
+                var resp = await NewOwnedTempChannel(exclusionTime, ctx.Member.Id, name);
+                await ctx.RespondAsync($"Canal temporário {resp.Item2.Mention} criado com sucesso!");
+            }
+            else
+            {
+                var resp = await NewPrivateTempChannel(exclusionTime, ctx.Member.Id, name);
+                await ctx.RespondAsync($"Canal privado {resp.Item2.Mention} criado com sucesso!");
+            }
+        }
+        else
+        {
+            await ctx.RespondAsync($"Desculpe, mas você já atingiu o limite de canais temporários que pode criar ({config.TempChannelCountPerUser}). Delete um antigo antes de criar outro.");
+        }
+    }
+
+    [Command("listar")]
+    public async Task ListTemporaryChannelsCmd(CommandContext ctx)
+    {
+        try
+        {
+            await ctx.DeferResponseAsync();
+        }
+        catch
+        {
+            return;
+        }
+
+        var userChannels = data.TempChannels.Where(r => r.IsOwned && r.OwnerID == ctx.Member.Id).ToList();
+
+        if (userChannels.Count == 0)
+        {
+            await ctx.RespondAsync("Você não possui canais temporários ativos.");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("Seus canais temporários ativos:");
+        foreach (var channel in userChannels)
+        {
+            var discordChannel = await serverContext.BindedDiscordServer.GetChannelAsync(channel.ChannelID);
+            sb.AppendLine($"* {discordChannel.Mention} (Exclusão: {channel.ExclusionTime})");
+        }
+
+        await ctx.RespondAsync(sb.ToString());
+    }
+
+    [Command("deletar")]
+    public async Task DeleteTemporaryChannelCmd(CommandContext ctx, DiscordChannel channel)
+    {
+        try
+        {
+            await ctx.DeferResponseAsync();
+        }
+        catch
+        {
+            return;
+        }        
+
+        var registry = data.TempChannels.FirstOrDefault(r => r.ChannelID == channel.Id && r.IsOwned && r.OwnerID == ctx.Member.Id);
+
+        if (registry != null)
+        {
+            string tmpName = channel.Name;
+            await DeleteTempChannel(channel.Id);
+            await ctx.RespondAsync($"Canal temporário {tmpName} deletado com sucesso!");
+        }
+        else
+        {
+            await ctx.RespondAsync("Você não possui permissão para deletar este canal temporário.");
+        }
+    }
 
 }
 

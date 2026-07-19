@@ -32,7 +32,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     private IPersistance persistance = persistance;
 
     private PriorityQueue<ScheduledCallback, DateTimeOffset> scheduledCallbacksQueue = new();
-    private Dictionary<(uint Id, Type ModuleType), ScheduledCallback> scheduledCallbacksDict = new();
+    private Dictionary<(ulong Id, Type ModuleType), ScheduledCallback> scheduledCallbacksDict = new();
     private Task nextTask = null;
     private CancellationTokenSource cancellationToken = new();
     
@@ -231,7 +231,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
 
     // Métodos de IScheduler, Criar métodos para criar diferentes tipos de callback, de acordo com seu tipo        
-    public bool ScheduleCallback(Delegate callback, object[] parameters, uint ID, DateTimeOffset execution, bool ManagedCallback = true)
+    public bool ScheduleCallback(Delegate callback, object[] parameters, ulong ID, DateTimeOffset execution, bool ManagedCallback = true)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
 
@@ -241,7 +241,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, uint ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, ulong ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         nextExecution ??= DateTimeOffset.Now + repeatInterval;
 
@@ -253,7 +253,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, uint ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, ulong ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
 
@@ -264,7 +264,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, uint ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, ulong ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
         newCallback.ScheduleType = ScheduleType.MonthlyRepeat;
@@ -274,7 +274,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, uint ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, ulong ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
         newCallback.ScheduleType = ScheduleType.YearlyRepeat;
@@ -343,7 +343,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
 
 
-        JsonValue id = JsonValue.Create<uint>(callback.ID);
+        JsonValue id = JsonValue.Create<ulong>(callback.ID);
         JsonValue manageId = JsonValue.Create<bool>(callback.ManageID);
         JsonObject owner = SerializeSchedulableModule(callback.Owner);
         JsonObject methodInfo = SerializeMethodInfo(callback.MethodInfo);        
@@ -444,7 +444,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
         callback.YearlyRepeat_Dates = datesRepeatDates.ToArray();
 
-        callback.ID = serializedScheduledCallback["ID"].GetValue<uint>();
+        callback.ID = serializedScheduledCallback["ID"].GetValue<ulong>();
         callback.ManageID = serializedScheduledCallback["ManageID"].GetValue<bool>();
         callback.Owner = DeserializeSchedulableModule(serializedScheduledCallback["Owner"].AsObject());
         callback.MethodInfo = DeserializeMethodInfo(serializedScheduledCallback["MethodInfo"].AsObject());
@@ -519,7 +519,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         public DateTimeOffset[] YearlyRepeat_Dates { get; set; }
 
         // ID do callback; Pode ser usado pelas classes clientes para gerenciar callbacks agendados, evitando duplicações de agendamentos para a mesma coisa
-        public uint ID { get; set; }
+        public ulong ID { get; set; }
         // Se verdadeiro, o Scheduler automaticamente verifica se já existe um callback com o mesmo ID e Owner antes de agendar um novo; Se existir, o novo não é agendado. Útil para evitar agendamentos duplicados.        
         // Se falso, o callback é sempre agendado (Útil para callbacks únicos/dinâmicos). Não é possil rastrear ou cancelar esses tipos de callbacks
         public bool ManageID { get; set; } = true;
@@ -626,7 +626,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             }
         }
 
-        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, uint ID, bool ManagedCallback = true)
+        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, ulong ID, bool ManagedCallback = true)
         {
             ScheduledCallback c = new();
 

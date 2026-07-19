@@ -91,6 +91,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         {
             await module.Initialize(this, services);
         }
+        Console.WriteLine("[BotContainer]" + " Finalized modules init");
 
         // Configura os event handlers dos eventos do bot
         // Configura a Task que indica o término da inicialização do bot
@@ -138,6 +139,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         // Inicializa o bot
         discordClient = dcClientBuilder.Build();
         await discordClient.ConnectAsync();
+        Console.WriteLine("[BotContainer]" + " Connected to discord");
 
         await readyToOperate.Task; // Aguarda o término da inicialização do bot        
 
@@ -154,24 +156,28 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         // Pre-começa a execução dos módulos
         foreach (IModule module in modules)
         {
-            await module.PreStart_0();
+            await module.PreStart_0();            
         }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 0");
 
         foreach (IModule module in modules)
         {
-            await module.PreStart_1();
+            await module.PreStart_1();            
         }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 1");
 
         foreach (IModule module in modules)
         {
-            await module.PreStart_2();
+            await module.PreStart_2();            
         }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 2");
 
         // Começa a execução dos módulos
         foreach (IModule module in modules)
         {
-            await module.Start();
+            await module.Start();            
         }
+        Console.WriteLine("[BotContainer]" + " Started all modules.");
 
         // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui        
 

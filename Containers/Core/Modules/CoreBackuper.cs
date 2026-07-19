@@ -17,7 +17,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
     IConfigPersistance configPersistance = configPersistance;
     IScheduler scheduler = scheduler;
 
-    public string Name => "Core Backuper";
+    public string Name => "CoreBackuper";
 
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
     public IEnumerable<CommandBuilder> GetDynamicCommands()
@@ -90,11 +90,15 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
     }
 
-    [Command("DoBackup")]
+    [Command("Backup")]
     public async Task RealizeBackupCmd(CommandContext ctx)
     {
         // TODO: Limitar isso à somente administradores do bot
-        await ctx.DeferResponseAsync();
+        try
+        {
+            await ctx.DeferResponseAsync();
+        }
+        catch {}
 
         if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
         {
