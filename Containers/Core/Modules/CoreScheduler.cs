@@ -1,6 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
-using GarçomDoKitts.Containers.IO;
+using DiscordGarçom.Containers.IO;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules;
+namespace DiscordGarçom.Containers.Core.Modules;
 
 /*
  *  OBS: Ao usar o CoreScheduler, garantir com que os métodos dos módulos em callback possam ser chamados em PreStart_1, 

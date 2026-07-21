@@ -1,10 +1,10 @@
-﻿using GarçomDoKitts.Containers.Core;
+﻿using DiscordGarçom.Containers.Core;
 using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.IO;
+namespace DiscordGarçom.Containers.IO;
 
 // Salva dados e configurações em arquivos JSON
 // TODO: Verificar se o arquivo existe antes de ler; No momento, pode gerar exceções caso não exista

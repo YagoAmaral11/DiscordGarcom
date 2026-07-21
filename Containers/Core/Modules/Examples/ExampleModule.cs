@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules.Examples;
+namespace DiscordGarçom.Containers.Core.Modules.Examples;
 
 public class ExampleModule(IPersistance persistance, IConfigPersistance config) : BaseModule<ExampleConfig, ExampleData>(persistance, config)
 {

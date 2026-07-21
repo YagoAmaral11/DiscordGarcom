@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules;
+namespace DiscordGarçom.Containers.Core.Modules;
 
 /*
  *  Um módulo base que implementa IModule e fornece funcionalidades básicas de configuração e persistência de dados.

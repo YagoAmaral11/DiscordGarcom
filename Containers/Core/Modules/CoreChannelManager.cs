@@ -2,7 +2,7 @@
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
-using GarçomDoKitts.GarcModules;
+using DiscordGarçom.GarcModules;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules;
+namespace DiscordGarçom.Containers.Core.Modules;
 
 public class CoreChannelManager(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
 {

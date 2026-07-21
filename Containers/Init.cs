@@ -1,11 +1,11 @@
-﻿using GarçomDoKitts.GarcModules;
-using GarçomDoKitts.Containers.Core.Modules;
-using GarçomDoKitts.Containers.IO;
+﻿using DiscordGarçom.GarcModules;
+using DiscordGarçom.Containers.Core.Modules;
+using DiscordGarçom.Containers.IO;
 using System.Threading.Tasks;
-using GarçomDoKitts.Containers.Core.Modules.Examples;
+using DiscordGarçom.Containers.Core.Modules.Examples;
 using System;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public static class Init
 {

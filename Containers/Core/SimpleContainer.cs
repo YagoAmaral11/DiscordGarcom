@@ -3,13 +3,13 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Entities;
-using GarçomDoKitts.Containers.Core.DSharpPlusAdapters;
+using DiscordGarçom.Containers.Core.DSharpPlusAdapters;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modules, ulong LinkedServerID) : IServerContext
 {

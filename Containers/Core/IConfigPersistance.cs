@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public interface IConfigPersistance
 {

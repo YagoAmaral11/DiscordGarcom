@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 /*  ORDEM DE CHAMADA DOS MÉTODOS:     
  *  1. Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)

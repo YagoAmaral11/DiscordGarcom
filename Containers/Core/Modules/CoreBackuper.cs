@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules;
+namespace DiscordGarçom.Containers.Core.Modules;
 
 public class CoreBackuper(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
 {

@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public interface IScheduler
 {    

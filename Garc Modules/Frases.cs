@@ -3,13 +3,13 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
-using GarçomDoKitts.Containers.Core;
+using DiscordGarçom.Containers.Core;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.GarcModules;
+namespace DiscordGarçom.GarcModules;
 
 [Command("Frases")]
 public class Frases(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule

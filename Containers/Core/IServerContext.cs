@@ -3,7 +3,7 @@ using DSharpPlus.Entities;
 using System;
 using System.Collections.Generic;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public interface IServerContext
 {
