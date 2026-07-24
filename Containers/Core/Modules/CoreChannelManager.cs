@@ -214,7 +214,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
     public async Task DeleteTempChannel(ulong channelID)
     {
         // Verifica se o canal existe no registro
-        if (data.TempChannels.Select(reg => reg.ChannelID == channelID).Any())
+        if (data.TempChannels.Where(reg => reg.ChannelID == channelID).Any())
         {
             data.TempChannels.RemoveAll(reg => reg.ChannelID == channelID);
         }
@@ -268,7 +268,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return registry;
     }
 
-    public bool UserCanCreateTempChannel(ulong userID) => data.TempChannels.Select(r => r.IsOwned && r.OwnerID == userID).Count() < config.TempChannelCountPerUser;
+    public bool UserCanCreateTempChannel(ulong userID) => data.TempChannels.Where(r => r.IsOwned && r.OwnerID == userID).Count() < config.TempChannelCountPerUser;
 
     
     [Command("criar")]    
