@@ -6,11 +6,10 @@ using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
+using DSharpPlus.EventArgs;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
@@ -19,13 +18,17 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 {
     CoreChannelManager channelManager = channelManager;
     Random sorter = new();
-    Dictionary<string, Partida> preMatches = new(); // usados para guardar informações de "possíveis partidas". TODO: Depois remover "pre-partidas" muito antigas.
-    Dictionary<string, ulong> preMatchesAdminVoiceChannel = new(); // usado para guardar em qual canal o admin estava antes de criar a partida. Usado para depois mover os jogadores de volta. TODO: Depois remover "pre-partidas" muito antigas
+    // Usado para guardar informações de "possíveis partidas".
+    // TODO: Depois remover "pre-partidas" muito antigas.
+    Dictionary<string, Partida> preMatches = new(); 
+    // Usado para guardar em qual canal o admin estava antes de criar a partida. Usado para depois mover os jogadores de volta.
+    // TODO: Depois remover "pre-partidas" muito antigas
+    Dictionary<string, ulong> preMatchesAdminVoiceChannel = new(); 
 
     public override string Name => "Party";
     protected override bool ThrowExceptionOnMissingConfig => true;
 
-    // "Button Codes"
+    // "Button Codes"    
     private const string createMixMatch = "mix_create";
     private const string createMixMatchAndMove = "mix_create_andMove";
     private const string finishMix = "mix_finish";
@@ -33,8 +36,12 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     protected override PartyConfig InitializeConfig() => new();
     protected override PartyData InitializeData() => new();
-
-    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask; // TODO: Se registrar e criar método para capturar interações; Responder as interações de gerenciamento de partida.
+    
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb)
+    {
+        ehb.HandleComponentInteractionCreated(OnInteraction);
+        return Task.CompletedTask;
+    }
 
     public override IEnumerable<CommandBuilder> GetDynamicCommands() => []; // TODO: Criar comandos para gerenciar e listar as partidas
     public override List<Type> GetStaticCommands() => [];
@@ -52,14 +59,43 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     public override Task Start() => Task.CompletedTask;
 
 
-    private bool UserCanCreateMatches(DiscordMember user) => data.PartidasAtivas.Where(match => match.Value.Admin == user.Id).Count() < config.MaxConcurrentMatchesPerAdmin;
+    private async Task OnInteraction(DiscordClient client, ComponentInteractionCreatedEventArgs args)
+    {
+        string buttonId = args.Interaction.Data.CustomId;
 
+        if (buttonId.StartsWith(Name) == false)
+            return;
 
-    // Wrapper para o _CreateMatch; Jeito mais fácil de criar uma partida "em branco"
-    private Partida CreateMatch(DiscordMember admin) => _CreateMatch(admin, [], []);    
+        string buttonCode = buttonId.Substring(Name.Length - 1, buttonId.IndexOf('&') - 1);
+        string matchUUID = buttonId.Substring(buttonId.IndexOf('&') - 1);
+
+        switch (buttonCode)
+        {
+            case createMixMatch:
+                Internal_MatchRegister(matchUUID);
+                // TODO: Remover botão de criar partida
+                break;
+            case createMixMatchAndMove:
+                Internal_MatchRegister(matchUUID);
+                await Internal_MatchMovePlayers(matchUUID);                
+                // TODO: Remover botão de criar partida/mover times
+                break;
+            case finishMix:                
+                Internal_MatchEnd(matchUUID);
+                // TODO: Remover botão de terminar partida
+                break;
+            case finishMixAndMove:                
+                Internal_MatchEnd(matchUUID);
+                // TODO: Mover jogadores de volta para a call original/lobby
+                // TODO: Remover botões de terminar partida
+                break;
+        }
+
+    }
+
 
     // Cria uma nova partida em branco, preenchendo apenas os times, o admin da partida, a data e o UUID. Não registra a partida como ativa nem como acabada.
-    private Partida _CreateMatch(DiscordMember admin, IEnumerable<DiscordMember> teamA, IEnumerable<DiscordMember> teamB)
+    private static Partida MatchCreate(DiscordMember admin, IEnumerable<DiscordMember> teamA, IEnumerable<DiscordMember> teamB)
     {
         Partida match = new(teamA.Select(t => t.Id), teamB.Select(t => t.Id)); 
         match.UUID = Guid.NewGuid().ToString(); // TODO: Não confiar no GUID cegamente; Depois verificar se é único, e criar novo se não for
@@ -69,15 +105,82 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         return match;
     }
 
+    // Cria o embed para mostrar uma partida registrada (ativa ou finalizada)
+    private DiscordMessageBuilder MatchRender(Partida match) => throw new NotImplementedException();
 
 
-    // Automaticamente sorteia dois times, de acordo com um admin de partida e os usuários na call que o admin esteja.
+
+    // Registra uma "pré-partida" como uma partida ativa, e remove a "pré-partida"
+    private void Internal_MatchRegister(string matchUUID)
+    {
+        if (!preMatches.ContainsKey(matchUUID))
+            return;
+
+        data.PartidasAtivas.Add(matchUUID, preMatches[matchUUID]);
+        preMatches.Remove(matchUUID);
+    }
+
+    // Dado uma partida ativa, move os jogadores de cada time para uma call temporário para o time
+    private async Task Internal_MatchMovePlayers(string matchUUID, TimeSpan? tempTeamsVoiceChannelsLifespan = null)
+    {
+        // TODO: Depois, melhorar o feedback do bot para o usuário do que está acontecendo (jogadores que não foram possíveis mover, etc.)
+
+        data.PartidasAtivas.TryGetValue(matchUUID, out var match);
+
+        if (match == null)
+            return;
+
+        tempTeamsVoiceChannelsLifespan ??= TimeSpan.FromHours(1);
+        var lifespan = DateTimeOffset.Now + tempTeamsVoiceChannelsLifespan.Value;
+        var canalA = await channelManager.NewGeneralTempChannel(lifespan, "•᲼ 🔵 Time A");
+        var canalB = await channelManager.NewGeneralTempChannel(lifespan, "•᲼ 🔴 Time B");
+
+        foreach (var playerID in match.Players)
+        {
+            var playerVoiceState = await serverContext.BindedDiscordServer.GetMemberVoiceStateAsync(playerID);
+            var playerDiscordMember = await serverContext.BindedDiscordServer.GetMemberAsync(playerID);
+
+            if (playerVoiceState.ChannelId == preMatchesAdminVoiceChannel[matchUUID])
+            {
+                if (match.TimeA.Contains(playerID))
+                {
+                    await canalA.channel.PlaceMemberAsync(playerDiscordMember);
+                }
+                else if (match.TimeB.Contains(playerID))
+                {
+                    await canalB.channel.PlaceMemberAsync(playerDiscordMember);
+                }
+            }
+        }
+    }
+
+    // Finaliza uma partida ativa
+    private void Internal_MatchEnd(string matchUUID)
+    {
+        data.PartidasAtivas.TryGetValue(matchUUID, out var match);
+        data.PartidasAtivas.Remove(matchUUID);
+
+        if (match == null)
+            return;
+
+        data.PartidasAntigas.Add(matchUUID, match);
+    }
+
+    // Remove o cache que salva em qual call o admin da partida estava ao criar uma "pré-partida"
+    // OBS: Só executar isso depois que a partida for finalizada/usuários já na call anterior.
+    private void Internal_PreMatchClear(string matchUUID)
+    {
+        preMatchesAdminVoiceChannel.Remove(matchUUID);
+    }
+
+
+    // Automaticamente sorteia dois times e gera uma partida (mas nao registra ela), de acordo com um admin de partida e os usuários na call que o admin esteja.
     private async Task<(AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut)> AutoVoiceChatSort(DiscordMember admin, uint maxPorTime = 5, string[] excludedPlayers = null)
     {
         DiscordVoiceState voiceState = admin.VoiceState;        
 
         // Verificações Iniciais
-        if (UserCanCreateMatches(admin) == false)
+        if (CanUserCreateMatches(admin) == false)
             return (AutoSortResult.CantCreateMoreMatches, null, null);
 
         if (voiceState == null)
@@ -148,12 +251,12 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         jogadores = null;
 
         // Criar a partida
-        var match = _CreateMatch(admin, timeA, timeB);
+        var match = MatchCreate(admin, timeA, timeB);
         return (AutoSortResult.Sucess,  match, sobra);
     }
 
-    // O modo legado de mostrar os jogadores selecionados no sorteio de dois times, para o mix
-    private async Task<DiscordMessageBuilder> _RenderMixSelected(Partida match, IEnumerable<DiscordMember> leftOut = null)
+    // O modo legado de mostrar os jogadores selecionados no sorteio de dois times, para o mix    
+    private async Task<DiscordMessageBuilder> Internal_LegacyRenderMixTeams(Partida match, IEnumerable<DiscordMember> leftOut = null)
     {
         var messageBuilder = new DiscordMessageBuilder();
         DiscordEmbedBuilder embedBuilder = new DiscordEmbedBuilder();
@@ -221,42 +324,49 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
         return messageBuilder;
     }
-    
-    // Cria o embed para mostrar uma partida registrada (ativa ou finalizada)
-    private DiscordEmbed RenderMatch(Partida match) => throw new NotImplementedException();
 
 
-    [Command("fastmix")]
-    // Sorteia dois times automaticamente dado a call do pedinte, fazendo o mesmo admin. Cria botões para "aceitar" e realmente criar a partida, calls para dois times e mover os jogadores.
+
+    private bool CanUserCreateMatches(DiscordMember user) => data.PartidasAtivas.Where(match => match.Value.Admin == user.Id).Count() < config.MaxConcurrentMatchesPerAdmin;
+
+
+
+    // O meio legado de criar um mix
+    // Sorteia dois times automaticamente dado a call do pedinte, fazendo o mesmo o admin da partida.
+    // Cria botões para "aceitar" e realmente criar a partida e calls para dois times, além de mover os jogadores.
     // Ainda cria um botão para mover todos de volta para um outra call de "lobby", para o pós jogo.
+    [Command("fastmix")]
     public async Task FastMix(CommandContext ctx)
     {        
         var result = await AutoVoiceChatSort(ctx.Member);
-        await _fastMix(ctx, result);
+        await Internal_fastMix(ctx, result);
     }
 
-    [Command("fastmix")]    
+    [Command("fastmix")]
+    // O meio legado de criar um mix, com um número específício de jogadores máximos por time
     public async Task FastMix(CommandContext ctx, uint jogadoresmax)
     {
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax);
-        await _fastMix(ctx, result);
+        await Internal_fastMix(ctx, result);
     }
 
     [Command("fastmix")]
+    // O meio legado de criar um mix, removendo certos jogadores do sorteio de times
     public async Task FastMix(CommandContext ctx, params string[] jogadoresdefora)
     {
         var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
-        await _fastMix(ctx, result);
+        await Internal_fastMix(ctx, result);
     }
 
     [Command("fastmix")]
+    // O meio legado de criar um mix, com um número específício de jogadores máximos por time e removendo certos jogadores do sorteio de times
     public async Task FastMix(CommandContext ctx, uint jogadoresmax, params string[] jogadoresdefora)
     {
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
-        await _fastMix(ctx, result);
+        await Internal_fastMix(ctx, result);
     }
 
-    private async Task _fastMix(CommandContext ctx, (AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut) result)
+    private async Task Internal_fastMix(CommandContext ctx, (AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut) result)
     {
         DiscordFollowupMessageBuilder builder = new();
         DiscordMessageBuilder msgBuilder = new();
@@ -320,16 +430,17 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         preMatches.Add(result.match.UUID, result.match);
         preMatchesAdminVoiceChannel.Add(result.match.UUID, (ulong) ctx.Member.VoiceState.ChannelId);
 
-        DiscordMessageBuilder finalResponse = await _RenderMixSelected(result.match, result.leftOut);
-        DiscordButtonComponent createMatchBtn = new(DiscordButtonStyle.Success, $"{createMixMatch}&{result.match.UUID}", "Confirmar partida");
-        DiscordButtonComponent createMatchAndMoveBtn = new(DiscordButtonStyle.Success, $"{createMixMatchAndMove}&{result.match.UUID}", "Confirmar partida & Criar calls");
-        DiscordButtonComponent endMatchBtn = new(DiscordButtonStyle.Secondary, $"{finishMix}&{result.match.UUID}", "Finalizar partida");
-        DiscordButtonComponent endMatchAndMoveBtn = new(DiscordButtonStyle.Secondary, $"{finishMixAndMove}&{result.match.UUID}", "Finalizar partida & Mover jogadores");
+        DiscordMessageBuilder finalResponse = await Internal_LegacyRenderMixTeams(result.match, result.leftOut);
+        DiscordButtonComponent createMatchBtn = new(DiscordButtonStyle.Success, $"{Name}.{createMixMatch}&{result.match.UUID}", "Confirmar partida");
+        DiscordButtonComponent createMatchAndMoveBtn = new(DiscordButtonStyle.Success, $"{Name}.{createMixMatchAndMove}&{result.match.UUID}", "Confirmar partida & Criar calls");
+        DiscordButtonComponent endMatchBtn = new(DiscordButtonStyle.Secondary, $"{Name}.{finishMix}&{result.match.UUID}", "Finalizar partida");
+        DiscordButtonComponent endMatchAndMoveBtn = new(DiscordButtonStyle.Secondary, $"{Name}.{finishMixAndMove}&{result.match.UUID}", "Finalizar partida & Mover jogadores");
 
         finalResponse.AddActionRowComponent(createMatchBtn, createMatchAndMoveBtn, endMatchBtn, endMatchAndMoveBtn);
 
         await ctx.RespondAsync(finalResponse);
     }
+
 
 
     public enum AutoSortResult
@@ -376,6 +487,6 @@ public class PartyConfig
 
 public class PartyData
 {
-    public Dictionary<ulong, Party.Partida> PartidasAtivas { get; set; }
-    public Dictionary<ulong, Party.Partida> PartidasAntigas { get; set; } // TODO: Alterar a forma de salvar partidas antigas para algo mais eficiente.
+    public Dictionary<string, Party.Partida> PartidasAtivas { get; set; }
+    public Dictionary<string, Party.Partida> PartidasAntigas { get; set; } // TODO: Alterar a forma de salvar partidas antigas para algo mais eficiente.
 }

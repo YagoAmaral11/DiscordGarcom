@@ -142,7 +142,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
 
 
 
-    public async Task<(TempChannelRegistry, DiscordChannel)> NewGeneralTempChannel(DateTimeOffset exclusion, string name = null)
+    public async Task<(TempChannelRegistry reg, DiscordChannel channel)> NewGeneralTempChannel(DateTimeOffset exclusion, string name = null)
     {
         if (!ready)
             return (null, null);
@@ -158,7 +158,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return (reg, channel);
     }
 
-    public async Task<(TempChannelRegistry, DiscordChannel)> NewOwnedTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
+    public async Task<(TempChannelRegistry reg, DiscordChannel channel)> NewOwnedTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
     {
         if (!ready)
             return (null, null);
@@ -179,7 +179,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return (reg, channel);
     }
 
-    public async Task<(TempChannelRegistry, DiscordChannel)> NewPrivateTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
+    public async Task<(TempChannelRegistry reg, DiscordChannel channel)> NewPrivateTempChannel(DateTimeOffset exclusion, ulong ownerID, string name = null)
     {
         if (!ready)
             return (null, null);
