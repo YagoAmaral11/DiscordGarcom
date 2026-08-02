@@ -19,10 +19,10 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     CoreChannelManager channelManager = channelManager;
     Random sorter = new();
     // Usado para guardar informações de "possíveis partidas".
-    // TODO: Depois remover "pre-partidas" muito antigas.
+    // TODO: Depois remover "pre-partidas" muito antigas. No momento, nem todas são registradas como partidas ativas, então só ficam guardadas aqui.
     Dictionary<string, Partida> preMatches = new(); 
     // Usado para guardar em qual canal o admin estava antes de criar a partida. Usado para depois mover os jogadores de volta.
-    // TODO: Depois remover "pre-partidas" muito antigas
+    // TODO: Depois remover "pre-partidas" muito antigas. No momento, só as partidas que o admin move os jogadores para o lobby são removidas daqui.
     Dictionary<string, ulong> preMatchesAdminVoiceChannel = new(); 
 
     public override string Name => "Party";
@@ -72,22 +72,19 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         switch (buttonCode)
         {
             case createMixMatch:
-                Internal_MatchRegister(matchUUID);
-                // TODO: Remover botão de criar partida
+                Internal_MatchRegister(matchUUID);                
                 break;
             case createMixMatchAndMove:
                 Internal_MatchRegister(matchUUID);
-                await Internal_MatchMovePlayers(matchUUID);                
-                // TODO: Remover botão de criar partida/mover times
+                await Internal_MatchMovePlayers(matchUUID);                                
                 break;
             case finishMix:                
-                Internal_MatchEnd(matchUUID);
-                // TODO: Remover botão de terminar partida
+                Internal_MatchEnd(matchUUID);                
                 break;
             case finishMixAndMove:                
-                Internal_MatchEnd(matchUUID);
-                // TODO: Mover jogadores de volta para a call original/lobby
-                // TODO: Remover botões de terminar partida
+                Internal_MatchEnd(matchUUID);                                
+                await Internal_MatchMovePlayersToLobby(matchUUID);
+                Internal_PreMatchClear(matchUUID);
                 break;
         }
 
@@ -154,6 +151,46 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
     }
 
+    // Dado uma partida, ativa ou acabada, move os jogadores de cada time para a call original do admin da partida, ou uma call de lobby de fallback.
+    // OBS: Só funciona enquanto a partida ainda estiver no preMatchesAdminVoiceChannel
+    private async Task<bool> Internal_MatchMovePlayersToLobby(string matchUUID)
+    {
+        // TODO: Depois, melhorar o feedback do bot para o usuário do que está acontecendo (jogadores que não foram possíveis mover, etc.)
+
+        if (preMatchesAdminVoiceChannel.TryGetValue(matchUUID, out var adminVCId))
+            return false;
+
+        DiscordChannel destination;
+
+        try
+        {
+            destination = await serverContext.BindedDiscordServer.GetChannelAsync(adminVCId);
+        }
+        catch
+        { 
+            destination = await serverContext.BindedDiscordServer.GetChannelAsync(config.MixDefaultLobbyChannelId);
+        }
+
+        Partida match;
+
+        if (!data.PartidasAtivas.TryGetValue(matchUUID, out match))
+        {
+            if (!data.PartidasAntigas.TryGetValue(matchUUID, out match))
+                return false;
+        }            
+
+        foreach (var playerID in match.Players)
+        {
+            var playerVoiceState = await serverContext.BindedDiscordServer.GetMemberVoiceStateAsync(playerID);
+            var playerDiscordMember = await serverContext.BindedDiscordServer.GetMemberAsync(playerID);
+
+            if (playerVoiceState.ChannelId != null)
+                await destination.PlaceMemberAsync(playerDiscordMember);            
+        }
+
+        return true;
+    }
+
     // Finaliza uma partida ativa
     private void Internal_MatchEnd(string matchUUID)
     {
@@ -171,8 +208,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     private void Internal_PreMatchClear(string matchUUID)
     {
         preMatchesAdminVoiceChannel.Remove(matchUUID);
-    }
-
+    }    
 
     // Automaticamente sorteia dois times e gera uma partida (mas nao registra ela), de acordo com um admin de partida e os usuários na call que o admin esteja.
     private async Task<(AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut)> AutoVoiceChatSort(DiscordMember admin, uint maxPorTime = 5, string[] excludedPlayers = null)
@@ -323,8 +359,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
 
         return messageBuilder;
-    }
-
+    }    
 
 
     private bool CanUserCreateMatches(DiscordMember user) => data.PartidasAtivas.Where(match => match.Value.Admin == user.Id).Count() < config.MaxConcurrentMatchesPerAdmin;
@@ -436,6 +471,8 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         DiscordButtonComponent endMatchBtn = new(DiscordButtonStyle.Secondary, $"{Name}.{finishMix}&{result.match.UUID}", "Finalizar partida");
         DiscordButtonComponent endMatchAndMoveBtn = new(DiscordButtonStyle.Secondary, $"{Name}.{finishMixAndMove}&{result.match.UUID}", "Finalizar partida & Mover jogadores");
 
+        DiscordActionRowComponent actionRow = new([createMatchBtn, createMatchAndMoveBtn, endMatchBtn, endMatchAndMoveBtn]);                        
+
         finalResponse.AddActionRowComponent(createMatchBtn, createMatchAndMoveBtn, endMatchBtn, endMatchAndMoveBtn);
 
         await ctx.RespondAsync(finalResponse);
@@ -483,6 +520,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 public class PartyConfig
 {
     public int MaxConcurrentMatchesPerAdmin { get; set; } = 5;
+    public ulong MixDefaultLobbyChannelId { get; set; } = 0; // O canal de voz de fallback para onde os jogadores serão movidos no fim do partida, no botão de Mix FinishMixAndMove
 }
 
 public class PartyData
