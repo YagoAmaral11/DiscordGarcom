@@ -2,6 +2,7 @@
 using DiscordGarçom.Containers.Core.Modules;
 using DSharpPlus;
 using DSharpPlus.Commands;
+using DSharpPlus.Commands.ArgumentModifiers;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Commands.Trees;
@@ -15,16 +16,13 @@ using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
 
-public class Party(IPersistance persistance, IConfigPersistance configPersistance, CoreChannelManager channelManager) : BaseModule<PartyConfig, PartyData>(persistance, configPersistance)
+public class Party(IPersistance persistance, IConfigPersistance configPersistance, CoreChannelManager channelManager, IScheduler scheduler) : BaseModule<PartyConfig, PartyData>(persistance, configPersistance)
 {
     CoreChannelManager channelManager = channelManager;
-    Random sorter = new();
-    // Usado para guardar informações de "possíveis partidas".
-    // TODO: Depois remover "pre-partidas" muito antigas. No momento, nem todas são registradas como partidas ativas, então só ficam guardadas aqui.
-    Dictionary<string, Partida> preMatches = new(); 
-    // Usado para guardar em qual canal o admin estava antes de criar a partida. Usado para depois mover os jogadores de volta.
-    // TODO: Depois remover "pre-partidas" muito antigas. No momento, só as partidas que o admin move os jogadores para o lobby são removidas daqui.
-    Dictionary<string, ulong> preMatchesAdminVoiceChannel = new(); 
+    IScheduler scheduler = scheduler;
+    Random sorter = new();    
+    Dictionary<string, Partida> preMatches = new(); // Usado para guardar informações de "possíveis partidas".        
+    Dictionary<string, ulong> preMatchesAdminVoiceChannel = new(); // Usado para guardar em qual canal o admin estava antes de criar a partida. Usado para depois mover os jogadores de volta.    
 
     public override string Name => "Party";
     protected override bool ThrowExceptionOnMissingConfig => true;
@@ -78,7 +76,12 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         return baseReturn;
     }
 
-    public override Task Start() => Task.CompletedTask;
+    public override Task Start()
+    {
+        // Limpa o cache de pré-partidas a cada 6 horas, para evitar que o bot fique com memória cheia de pré-partidas antigas
+        scheduler.ScheduleRepeatEvery(Internal_ClearTempRegistry, [], 0, TimeSpan.FromHours(6)); 
+        return Task.CompletedTask;
+    }
 
 
     private async Task OnInteraction(DiscordClient client, ComponentInteractionCreatedEventArgs args)
@@ -104,23 +107,53 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         switch (buttonCode)
         {
             case createMixMatch:
-                Internal_MatchRegister(matchUUID);                
+                await Interaction_FastMixCreateMixMatch(args, matchUUID);
                 break;
             case createMixMatchAndMove:
-                Internal_MatchRegister(matchUUID);
-                await Internal_MatchMovePlayers(matchUUID);                                
+                await Interaction_FastMixCreateMixMatchAndMove(args, matchUUID);
                 break;
-            case finishMix:                
-                Internal_MatchEnd(matchUUID);                
+            case finishMix:
+                await Interaction_FastMixEndMatch(args, matchUUID);
                 break;
             case finishMixAndMove:                
-                Internal_MatchEnd(matchUUID);                                
-                await Internal_MatchMovePlayersToLobby(matchUUID);
-                Internal_PreMatchClear(matchUUID);
+                await Interaction_FastMixEndMatchAndMove(args, matchUUID);
                 break;
         }
 
     }
+
+
+    private async Task Interaction_FastMixCreateMixMatch(ComponentInteractionCreatedEventArgs originalArgs, string matchUUID)
+    {
+        Internal_MatchRegister(matchUUID);
+        await originalArgs.Interaction.CreateFollowupMessageAsync(new DiscordFollowupMessageBuilder().WithContent("Partida registrada!"));
+    }
+
+    private async Task Interaction_FastMixCreateMixMatchAndMove(ComponentInteractionCreatedEventArgs originalArgs, string matchUUID)
+    {
+        Internal_MatchRegister(matchUUID);
+        await Internal_MatchMovePlayers(matchUUID);
+        await originalArgs.Interaction.CreateFollowupMessageAsync(new DiscordFollowupMessageBuilder().WithContent("Partida registrada e jogadores movidos!"));
+    }
+
+    private async Task Interaction_FastMixEndMatch(ComponentInteractionCreatedEventArgs originalArgs, string matchUUID)
+    {
+        Internal_MatchEnd(matchUUID);
+        await originalArgs.Interaction.CreateFollowupMessageAsync(new DiscordFollowupMessageBuilder().WithContent("Partida finalizada!"));
+    }
+
+    private async Task Interaction_FastMixEndMatchAndMove(ComponentInteractionCreatedEventArgs originalArgs, string matchUUID)
+    {
+        Internal_MatchEnd(matchUUID);
+        bool result = await Internal_MatchMovePlayersToLobby(matchUUID);
+        Internal_PreMatchClear(matchUUID);
+
+        if (result)
+            await originalArgs.Interaction.CreateFollowupMessageAsync(new DiscordFollowupMessageBuilder().WithContent("Partida finalizada e jogadores movidos!"));
+        else
+            await originalArgs.Interaction.CreateFollowupMessageAsync(new DiscordFollowupMessageBuilder().WithContent("Partida finalizada, mas os jogadores não podem ser movidos mais (Tempo expirado)"));
+    }
+
 
 
     // Cria uma nova partida em branco, preenchendo apenas os times, o admin da partida, a data e o UUID. Não registra a partida como ativa nem como acabada.
@@ -224,6 +257,12 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
 
 
+    private void Internal_ClearTempRegistry()
+    {
+        preMatches.Clear();
+        preMatchesAdminVoiceChannel.Clear();
+    }
+
     // Registra uma "pré-partida" como uma partida ativa, e remove a "pré-partida"
     private void Internal_MatchRegister(string matchUUID)
     {
@@ -273,8 +312,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     private async Task<bool> Internal_MatchMovePlayersToLobby(string matchUUID)
     {
         // TODO: Depois, melhorar o feedback do bot para o usuário do que está acontecendo (jogadores que não foram possíveis mover, etc.)
-
-        if (preMatchesAdminVoiceChannel.TryGetValue(matchUUID, out var adminVCId))
+        if (!preMatchesAdminVoiceChannel.TryGetValue(matchUUID, out var adminVCId))
             return false;
 
         DiscordChannel destination;
@@ -298,11 +336,18 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
         foreach (var playerID in match.Players)
         {
-            var playerVoiceState = await serverContext.BindedDiscordServer.GetMemberVoiceStateAsync(playerID);
-            var playerDiscordMember = await serverContext.BindedDiscordServer.GetMemberAsync(playerID);
+            try
+            {
+                var playerVoiceState = await serverContext.BindedDiscordServer.GetMemberVoiceStateAsync(playerID);
+                var playerDiscordMember = await serverContext.BindedDiscordServer.GetMemberAsync(playerID);
 
-            if (playerVoiceState.ChannelId != null)
-                await destination.PlaceMemberAsync(playerDiscordMember);            
+                if (playerVoiceState != null && playerVoiceState.ChannelId != null)
+                    await destination.PlaceMemberAsync(playerDiscordMember);
+            }            
+            catch (Exception e)
+            {
+                Console.WriteLine(((IModule) this).LogName + $" Could not move player {playerID}:  {e.Message}");
+            }
         }
 
         return true;
@@ -329,7 +374,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     }    
 
     // Automaticamente sorteia dois times e gera uma partida (mas nao registra ela), de acordo com um admin de partida e os usuários na call que o admin esteja.
-    private async Task<(AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut)> AutoVoiceChatSort(DiscordMember admin, uint maxPorTime = 5, string[] excludedPlayers = null)
+    private async Task<(AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut)> AutoVoiceChatSort(DiscordMember admin, uint maxPorTime = 5, IEnumerable<DiscordMember> excludedPlayers = null)
     {
         DiscordVoiceState voiceState = admin.VoiceState;        
 
@@ -339,8 +384,11 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
         if (voiceState == null)
             return (AutoSortResult.AdminNotInVoiceChat, null, null);
+        
+        if (voiceState.ChannelId == null)
+            return (AutoSortResult.AdminNotInVoiceChat, null, null);
 
-        var adminVC = await voiceState.GetChannelAsync(true);
+        var adminVC = await serverContext.BindedDiscordServer.GetChannelAsync(voiceState.ChannelId.Value);
 
         if (adminVC.Users.Count < 3)
             return (AutoSortResult.LessThanThreePlayers, null, null);                
@@ -354,6 +402,13 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         List<DiscordMember> tmp = new(jogadores);
 
         // Parte para excluir jogadores do sorteio
+        excludedPlayers ??= [];
+        foreach (var excluded in excludedPlayers)
+        {
+            jogadores.Remove(excluded);
+        }
+
+        // Remover bots
         foreach (DiscordMember jogador in tmp)
         {
             if (jogador.Id == serverContext.BotDiscordClient.CurrentUser.Id)
@@ -362,17 +417,16 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
                 continue;
             }
 
-            if (excludedPlayers == null)
-                continue;
-
-            foreach (string user in excludedPlayers)
+            if (!config.FastMixIncludeBots && jogador.IsBot)
             {
-                if ($"<@{jogador.Id}>" == user)
-                {
-                    jogadores.Remove(jogador);
-                }
-            }
+                jogadores.Remove(jogador);
+                continue;
+            }    
         }
+
+        // Testa novamente se os jogadores que sobraram podem fazer um time
+        if (jogadores.Count < 3)
+            return (AutoSortResult.LessThanThreePlayers, null, null);
 
         uint jogadoresTotal = (uint) jogadores.Count;
         uint jogadoresPorTime = (uint) jogadoresTotal / 2;
@@ -482,7 +536,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     private bool CanUserCreateMatches(DiscordMember user) => data.PartidasAtivas.Where(match => match.Value.Admin == user.Id).Count() < config.MaxConcurrentMatchesPerAdmin;
     private bool DoMatchExist(string matchUUID) => data.PartidasAtivas.ContainsKey(matchUUID) || data.PartidasAntigas.ContainsKey(matchUUID);
-    // OBS: Puxa partidas que ainda não foram criadas por padrão
+    // OBS: Puxa partidas que ainda não foram criadas (pré-partidas) por padrão
     private Partida GetMatch(string matchUUID, bool allowPreMatches = true)
     {
         if (data.PartidasAtivas.TryGetValue(matchUUID, out var match))
@@ -526,7 +580,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("out")]
     // O meio legado de criar um mix, removendo certos jogadores do sorteio de times
-    public async Task FastMix_out(CommandContext ctx, params string[] jogadoresdefora)
+    public async Task FastMix_out(CommandContext ctx, [VariadicArgument(99, 1)] DiscordMember[] jogadoresdefora)
     {
         await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
@@ -535,7 +589,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("maxout")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time e removendo certos jogadores do sorteio de times
-    public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, params string[] jogadoresdefora)
+    public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, [VariadicArgument(99, 1)] DiscordMember[] jogadoresdefora)
     {
         await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
@@ -645,7 +699,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
                 sb.AppendLine($"- {partida.Key}");
             }
 
-            sb.AppendLine("Use /party partida (id) para mostrar uma partida em específico");
+            sb.AppendLine("Tente mostrar uma partida em específico");
             await ctx.RespondAsync(sb.ToString());
         }
         else if (partidasAtivasCount == 0)
@@ -761,7 +815,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
                 return;
             }
 
-            Internal_MatchEnd(id);
+            Internal_MatchEnd(match.UUID);
             await ctx.RespondAsync("Partida finalizada!");
         }
         else if (partidasAtivasCount > 1)
@@ -774,7 +828,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
                 sb.AppendLine($"- {partida.Key}");
             }
 
-            sb.AppendLine("Use /party terminarpartida (id) para mostrar uma partida em específico");
+            sb.AppendLine("Termine uma partida em específico para começar outra");
             await ctx.RespondAsync(sb.ToString());
         }
         else if (partidasAtivasCount == 0)
@@ -839,6 +893,7 @@ public class PartyConfig
 {
     public int MaxConcurrentMatchesPerAdmin { get; set; } = 5;
     public ulong MixDefaultLobbyChannelId { get; set; } = 0; // O canal de voz de fallback para onde os jogadores serão movidos no fim do partida, no botão de Mix FinishMixAndMove
+    public bool FastMixIncludeBots { get; set; } = false; // Se o FastMix deve incluir bots no sorteio de times
 }
 
 public class PartyData

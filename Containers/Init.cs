@@ -20,7 +20,7 @@ public static class Init
         
         CoreChannelManager channelManager = new(fileSystem, fileSystem, scheduler);
 
-        Party garcPartyModule = new(fileSystem, fileSystem, channelManager);
+        Party garcPartyModule = new(fileSystem, fileSystem, channelManager, scheduler);
 
         SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler, backuper, channelManager, garcPartyModule], LinkedServerID: 832773492738490448);        
 

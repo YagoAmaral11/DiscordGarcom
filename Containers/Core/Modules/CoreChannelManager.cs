@@ -153,7 +153,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         DiscordChannel channel = await serverContext.BindedDiscordServer.CreateVoiceChannelAsync(config.TempChannelNamePrefix + name, parent: RootTempChannels, reason: reason);
         var reg = NewRegistry(exclusion, channel.Id);
 
-        scheduler.ScheduleCallback(DeleteTempChannel, [channel.Id], (ulong) DateTimeOffset.Now.Ticks, exclusion, false);
+        scheduler.ScheduleCallback(DeleteTempChannel, [(ulong) channel.Id], (ulong) DateTimeOffset.Now.Ticks, exclusion, false);
 
         return (reg, channel);
     }
@@ -226,15 +226,16 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         {
             channel = await serverContext.BindedDiscordServer.GetChannelAsync(channelID);
         }
-        catch
+        catch (Exception e)
         {
+            Console.WriteLine($"Could not find channel : {channelID}, " + e.Message);
         }
 
         if (channel != null)
         {
             if (channel.Users.Count == 0)
             {
-                await channel.DeleteAsync(Name + " deleting temp channel " + channel.Name + " (ID: " + channel.Id + ")");
+                await channel.DeleteAsync(Name + " deleting temp channel " + channel.Name + " (ID: " + channel.Id + ")");                
             }
             else
             {
