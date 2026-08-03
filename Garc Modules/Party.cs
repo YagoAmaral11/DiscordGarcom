@@ -10,6 +10,7 @@ using DSharpPlus.EventArgs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
@@ -43,7 +44,28 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         return Task.CompletedTask;
     }
 
-    public override IEnumerable<CommandBuilder> GetDynamicCommands() => []; // TODO: Criar comandos para gerenciar e listar as partidas
+    public override IEnumerable<CommandBuilder> GetDynamicCommands()
+    {        
+        CommandBuilder party = new CommandBuilder().WithName("party");        
+        
+        var fastMix = new CommandBuilder().WithName("fastmix");
+        var fastMix_sort = CommandBuilder.From(FastMix).WithParent(fastMix).WithDescription("Sorteia dois times de acordo com a call do pedinte, que pode ser transformado em uma partida");
+        var fastMix_max = CommandBuilder.From(FastMix_max).WithParent(fastMix).WithDescription("Fastmix, com os times tendo um limite de jogadores");
+        var fastMix_out = CommandBuilder.From(FastMix_out).WithParent(fastMix).WithDescription("Fastmix, com jogadores excluídos do sorteio");
+        var fastMix_maxout = CommandBuilder.From(FastMix_maxout).WithParent(fastMix).WithDescription("Fastmix, com limite de jogadores e jogadores excluídos do sorteio");
+        fastMix.WithSubcommands([fastMix_sort, fastMix_max, fastMix_out, fastMix_maxout]);
+
+        var partida = new CommandBuilder().WithName("partida");
+        var partida_atual = CommandBuilder.From(CurrentMatch).WithParent(partida).WithDescription("Mostra a partida atual do pedinte, seja como admin ou jogador");
+        var partida_mostrar = CommandBuilder.From(CurrentMatch_showId).WithParent(partida).WithDescription("Mostra a partida do ID passado");
+        var partida_finalizar = CommandBuilder.From(EndMatch).WithParent(partida).WithDescription("Finaliza a partida do ID passado ou a partida ativa do pedinte");
+        partida.WithSubcommands([partida_atual, partida_mostrar, partida_finalizar]);
+
+        party.WithSubcommands([fastMix, partida]);
+
+        return [party];
+    }
+
     public override List<Type> GetStaticCommands() => [];
 
 
@@ -61,13 +83,23 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     private async Task OnInteraction(DiscordClient client, ComponentInteractionCreatedEventArgs args)
     {
+        await args.Interaction.DeferAsync();
+
         string buttonId = args.Interaction.Data.CustomId;
 
         if (buttonId.StartsWith(Name) == false)
             return;
 
-        string buttonCode = buttonId.Substring(Name.Length - 1, buttonId.IndexOf('&') - 1);
-        string matchUUID = buttonId.Substring(buttonId.IndexOf('&') - 1);
+        string buttonCode = buttonId.Substring(Name.Length + 1, buttonId.IndexOf('&') - Name.Length - 1);        
+        string matchUUID = buttonId.Substring(buttonId.IndexOf('&') + 1);
+
+        if (!IsMatchAdmin(matchUUID, await serverContext.BindedDiscordServer.GetMemberAsync(args.User.Id)))
+        {
+            var responseBuilder = new DiscordFollowupMessageBuilder();
+            responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+            await args.Interaction.CreateFollowupMessageAsync(responseBuilder);
+            return;
+        }
 
         switch (buttonCode)
         {
@@ -95,15 +127,100 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     private static Partida MatchCreate(DiscordMember admin, IEnumerable<DiscordMember> teamA, IEnumerable<DiscordMember> teamB)
     {
         Partida match = new(teamA.Select(t => t.Id), teamB.Select(t => t.Id)); 
+
         match.UUID = Guid.NewGuid().ToString(); // TODO: Não confiar no GUID cegamente; Depois verificar se é único, e criar novo se não for
         match.Admin = admin.Id;
         match.Date = DateTimeOffset.Now;
         match.Finished = false;
+
+        match.TimeA_Score = -1;
+        match.TimeB_Score = -1;        
+
         return match;
     }
 
     // Cria o embed para mostrar uma partida registrada (ativa ou finalizada)
-    private DiscordMessageBuilder MatchRender(Partida match) => throw new NotImplementedException();
+    private DiscordMessageBuilder MatchRender(Partida match)
+    {
+        DiscordMessageBuilder msg = new();
+
+        string teamAName = string.IsNullOrEmpty(match.TimeA_Name) ? "A" : match.TimeA_Name;
+        string teamBName = string.IsNullOrEmpty(match.TimeB_Name) ? "B" : match.TimeB_Name;
+
+        DiscordEmbedBuilder embed = new();
+        embed.WithTitle("Partida Personalizada");
+
+        StringBuilder description = new();
+        description.AppendLine(match.Date.ToString());
+        description.AppendLine($"UUID: {match.UUID}");
+        
+        if (!string.IsNullOrWhiteSpace(match.Game))
+            description.AppendLine("Jogo: " + match.Game);
+
+        if (match.Finished)
+        {
+            description.AppendLine($"*Finalizada*");            
+        }
+        else
+        {
+            description.AppendLine($"*Em Andamento*");
+        }
+
+        embed.WithDescription(description.ToString());
+
+        // A Players Field
+        string teamAPlayers = "";
+
+        int count = 0;
+        foreach (ulong playerID in match.TimeA)
+        {
+            DiscordMember member = serverContext.BindedDiscordServer.GetMemberAsync(playerID).Result;
+
+            if (count == 0)
+            {
+                teamAPlayers += $"{member.Username} ({member.Mention})";                
+            }
+            else
+                teamAPlayers += $", {member.Username} ({member.Mention})";
+
+            count++;
+        }
+
+        // B Players Field
+        string teamBPlayers = "";
+        count = 0;
+        foreach (ulong playerID in match.TimeB)
+        {
+            DiscordMember member = serverContext.BindedDiscordServer.GetMemberAsync(playerID).Result;
+
+            if (count == 0)
+            {
+                teamBPlayers += $"{member.Username} ({member.Mention})";
+            }
+            else
+                teamBPlayers += $", {member.Username} ({member.Mention})";
+
+            count++;
+        }
+
+        // Result
+        string timeAScore = "";
+        string timeBScore = "";
+
+        if (match.TimeA_Score != -1 && match.TimeB_Score != -1)
+        {
+            timeAScore = match.TimeA_Score.ToString();
+            timeBScore = match.TimeB_Score.ToString();
+        }
+
+        // Fields
+        embed.AddField(teamAName + timeAScore, teamAPlayers, true);
+        embed.AddField(teamBName + timeBScore, teamBPlayers, true);        
+
+        msg.AddEmbed(embed.Build());
+
+        return msg;
+    }
 
 
 
@@ -200,6 +317,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         if (match == null)
             return;
 
+        match.Finished = true;
         data.PartidasAntigas.Add(matchUUID, match);
     }
 
@@ -222,7 +340,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         if (voiceState == null)
             return (AutoSortResult.AdminNotInVoiceChat, null, null);
 
-        var adminVC = await voiceState.GetChannelAsync();
+        var adminVC = await voiceState.GetChannelAsync(true);
 
         if (adminVC.Users.Count < 3)
             return (AutoSortResult.LessThanThreePlayers, null, null);                
@@ -363,40 +481,63 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
 
     private bool CanUserCreateMatches(DiscordMember user) => data.PartidasAtivas.Where(match => match.Value.Admin == user.Id).Count() < config.MaxConcurrentMatchesPerAdmin;
+    private bool DoMatchExist(string matchUUID) => data.PartidasAtivas.ContainsKey(matchUUID) || data.PartidasAntigas.ContainsKey(matchUUID);
+    // OBS: Puxa partidas que ainda não foram criadas por padrão
+    private Partida GetMatch(string matchUUID, bool allowPreMatches = true)
+    {
+        if (data.PartidasAtivas.TryGetValue(matchUUID, out var match))
+            return match;
+        if (data.PartidasAntigas.TryGetValue(matchUUID, out match))
+            return match;
+        if (preMatches.TryGetValue(matchUUID, out match))
+            return match;
+        return null;
+    }
+    private bool IsMatchAdmin(string matchUUID, DiscordMember user)
+    {
+        var match = GetMatch(matchUUID);
+        if (match == null)
+            return false;
 
+        return match.Admin == user.Id;
+    }
 
 
     // O meio legado de criar um mix
     // Sorteia dois times automaticamente dado a call do pedinte, fazendo o mesmo o admin da partida.
     // Cria botões para "aceitar" e realmente criar a partida e calls para dois times, além de mover os jogadores.
     // Ainda cria um botão para mover todos de volta para um outra call de "lobby", para o pós jogo.
-    [Command("fastmix")]
+    [Command("sortear")]
     public async Task FastMix(CommandContext ctx)
     {        
+        await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member);
         await Internal_fastMix(ctx, result);
     }
 
-    [Command("fastmix")]
+    [Command("max")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time
-    public async Task FastMix(CommandContext ctx, uint jogadoresmax)
+    public async Task FastMix_max(CommandContext ctx, uint jogadoresmax)
     {
+        await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax);
         await Internal_fastMix(ctx, result);
     }
 
-    [Command("fastmix")]
+    [Command("out")]
     // O meio legado de criar um mix, removendo certos jogadores do sorteio de times
-    public async Task FastMix(CommandContext ctx, params string[] jogadoresdefora)
+    public async Task FastMix_out(CommandContext ctx, params string[] jogadoresdefora)
     {
+        await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
         await Internal_fastMix(ctx, result);
     }
 
-    [Command("fastmix")]
+    [Command("maxout")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time e removendo certos jogadores do sorteio de times
-    public async Task FastMix(CommandContext ctx, uint jogadoresmax, params string[] jogadoresdefora)
+    public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, params string[] jogadoresdefora)
     {
+        await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
         await Internal_fastMix(ctx, result);
     }
@@ -479,6 +620,179 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     }
 
 
+    [Command("atual")]
+    // Mostra a partida atual, seja de admin ou de jogador, do pedinte. Se estiver em mais de uma partida, mostra a lista de partidas.
+    public async Task CurrentMatch(CommandContext ctx)
+    {
+        await ctx.DeferResponseAsync();        
+
+        var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
+        var partidasAtivasCount = partidasAtivas.Count();
+
+        if (partidasAtivasCount == 1)
+        {
+            var match = partidasAtivas.First().Value;
+            var msg = MatchRender(match);
+            await ctx.RespondAsync(msg);
+        }
+        else if (partidasAtivasCount > 1)
+        {
+            StringBuilder sb = new();
+            sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
+
+            foreach (var partida in partidasAtivas)
+            {
+                sb.AppendLine($"- {partida.Key}");
+            }
+
+            sb.AppendLine("Use /party partida (id) para mostrar uma partida em específico");
+            await ctx.RespondAsync(sb.ToString());
+        }
+        else if (partidasAtivasCount == 0)
+        {
+            if (ctx is SlashCommandContext slashCtx)
+            {
+                var responseBuilder = new DiscordFollowupMessageBuilder();
+                responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
+                await slashCtx.FollowupAsync(responseBuilder);
+            }
+            else
+            {
+                await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
+            }
+        }
+    }
+
+    [Command("mostrar")]
+    // Mostra a partida do UUID passado
+    public async Task CurrentMatch_showId(CommandContext ctx, string id)
+    {
+        await ctx.DeferResponseAsync();
+
+        string uuid = id.ToLower();
+        if (data.PartidasAtivas.TryGetValue(uuid, out Partida partidaAtiva))
+        {
+            var msg = MatchRender(partidaAtiva);
+            await ctx.RespondAsync(msg);
+        }
+        else if (data.PartidasAntigas.TryGetValue(uuid, out Partida partidaAntiga))
+        {
+            var msg = MatchRender(partidaAntiga);
+            await ctx.RespondAsync(msg);
+        }
+        else
+        {
+            if (ctx is SlashCommandContext)
+            {
+                var responseBuilder = new DiscordFollowupMessageBuilder();
+                responseBuilder.WithContent("Essa partida não existe").AsEphemeral();
+                await ctx.FollowupAsync(responseBuilder);
+            }
+            else
+            {
+                await ctx.RespondAsync("Essa partida não existe");
+            }
+        }
+    }
+
+    [Command("finalizar")]
+    // Finaliza a partida do UUID passado, ou a partida ativa do pedinte, se ele for admin da partida.
+    public async Task EndMatch(CommandContext ctx, string id = null)
+    {
+        await ctx.DeferResponseAsync();
+
+        var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
+        var partidasAtivasCount = partidasAtivas.Count();
+
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            if (!DoMatchExist(id))
+            {
+                if (ctx is SlashCommandContext)
+                {
+                    var responseBuilder = new DiscordFollowupMessageBuilder();
+                    responseBuilder.WithContent("Essa partida não existe! Verifique o ID passado").AsEphemeral();
+                    await ctx.FollowupAsync(responseBuilder);
+                }
+                else
+                {
+                    await ctx.RespondAsync("Essa partida não existe! Verifique o ID passado");
+                }
+
+                return;
+            }
+
+            if (!IsMatchAdmin(id, ctx.Member))
+            {
+                if (ctx is SlashCommandContext)
+                {
+                    var responseBuilder = new DiscordFollowupMessageBuilder();
+                    responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+                    await ctx.FollowupAsync(responseBuilder);
+                }
+                else
+                {
+                    await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
+                }
+                return;
+            }
+
+            Internal_MatchEnd(id);
+            await ctx.RespondAsync("Partida finalizada!");
+            return;
+        }
+
+        if (partidasAtivasCount == 1)
+        {
+            var match = partidasAtivas.First().Value;
+
+            if (!IsMatchAdmin(match.UUID, ctx.Member))
+            {
+                if (ctx is SlashCommandContext)
+                {
+                    var responseBuilder = new DiscordFollowupMessageBuilder();
+                    responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+                    await ctx.FollowupAsync(responseBuilder);
+                }
+                else
+                {
+                    await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
+                }
+                return;
+            }
+
+            Internal_MatchEnd(id);
+            await ctx.RespondAsync("Partida finalizada!");
+        }
+        else if (partidasAtivasCount > 1)
+        {
+            StringBuilder sb = new();
+            sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
+
+            foreach (var partida in partidasAtivas)
+            {
+                sb.AppendLine($"- {partida.Key}");
+            }
+
+            sb.AppendLine("Use /party terminarpartida (id) para mostrar uma partida em específico");
+            await ctx.RespondAsync(sb.ToString());
+        }
+        else if (partidasAtivasCount == 0)
+        {
+            if (ctx is SlashCommandContext)
+            {
+                var responseBuilder = new DiscordFollowupMessageBuilder();
+                responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
+                await ctx.FollowupAsync(responseBuilder);
+            }
+            else
+            {
+                await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
+            }
+        }
+
+    }
+
 
     public enum AutoSortResult
     {
@@ -496,17 +810,21 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         public bool Finished { get; set; } = false;
         public string Game { get; set; }
 
-        private readonly List<ulong> timeA = new();
+        public List<ulong> timeA { get; set; } = new();
         public IReadOnlyList<ulong> TimeA => timeA;
         public string TimeA_Name {  get; set; }
         public float TimeA_Score {  get; set; }
 
-        private readonly List<ulong> timeB = new();
+        public List<ulong> timeB { get; set; } = new();
         public IReadOnlyList<ulong> TimeB => timeB;
         public string TimeB_Name { get; set; }
         public float TimeB_Score { get; set; }
 
         public IReadOnlyList<ulong> Players => [.. timeA, .. timeB];        
+
+        public Partida()
+        {
+        }
 
         public Partida(IEnumerable<ulong> timeA, IEnumerable<ulong> timeB)
         {
@@ -525,6 +843,6 @@ public class PartyConfig
 
 public class PartyData
 {
-    public Dictionary<string, Party.Partida> PartidasAtivas { get; set; }
-    public Dictionary<string, Party.Partida> PartidasAntigas { get; set; } // TODO: Alterar a forma de salvar partidas antigas para algo mais eficiente.
+    public Dictionary<string, Party.Partida> PartidasAtivas { get; set; } = new();
+    public Dictionary<string, Party.Partida> PartidasAntigas { get; set; } = new(); // TODO: Alterar a forma de salvar partidas antigas para algo mais eficiente.
 }

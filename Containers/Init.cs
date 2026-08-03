@@ -19,8 +19,10 @@ public static class Init
         Frases garcKFrasesModule = new(fileSystem, fileSystem, scheduler);            
         
         CoreChannelManager channelManager = new(fileSystem, fileSystem, scheduler);
-        
-        SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler, backuper, channelManager], LinkedServerID: 832773492738490448);        
+
+        Party garcPartyModule = new(fileSystem, fileSystem, channelManager);
+
+        SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler, backuper, channelManager, garcPartyModule], LinkedServerID: 832773492738490448);        
 
         if (await garcKittsShell.Start())
         {            
