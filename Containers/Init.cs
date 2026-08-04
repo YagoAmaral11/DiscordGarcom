@@ -1,9 +1,10 @@
-﻿using DiscordGarçom.GarcModules;
-using DiscordGarçom.Containers.Core.Modules;
-using DiscordGarçom.Containers.IO;
-using System.Threading.Tasks;
+﻿using DiscordGarçom.Containers.Core.Modules;
 using DiscordGarçom.Containers.Core.Modules.Examples;
+using DiscordGarçom.Containers.IO;
+using DiscordGarçom.Garc_Modules;
+using DiscordGarçom.GarcModules;
 using System;
+using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core;
 
@@ -21,8 +22,10 @@ public static class Init
         CoreChannelManager channelManager = new(fileSystem, fileSystem, scheduler);
 
         Party garcPartyModule = new(fileSystem, fileSystem, channelManager, scheduler);
+        Utility garcUtilityModule = new(fileSystem, fileSystem);
 
-        SimpleContainer garcKittsShell = new(persistance: fileSystem, modules: [garcKFrasesModule, scheduler, backuper, channelManager, garcPartyModule], LinkedServerID: 832773492738490448);        
+        SimpleContainer garcKittsShell = new(persistance: fileSystem, 
+            modules: [garcKFrasesModule, scheduler, backuper, channelManager, garcPartyModule, garcUtilityModule], LinkedServerID: 832773492738490448);        
 
         if (await garcKittsShell.Start())
         {            

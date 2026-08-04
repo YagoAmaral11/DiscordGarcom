@@ -478,7 +478,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         string methodName = serializedMethodInfo["MethodName"].GetValue<string>();
 
         Type declaringType = Type.GetType(declaringTypeName);
-        MethodInfo methodInfo = declaringType.GetMethod(methodName);
+        MethodInfo methodInfo = declaringType.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
 
         return methodInfo;
     }
