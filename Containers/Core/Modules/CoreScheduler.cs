@@ -1,6 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
-using GarçomDoKitts.Containers.IO;
+using DiscordGarçom.Containers.IO;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,13 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.Modules;
+namespace DiscordGarçom.Containers.Core.Modules;
+
+/*
+ *  OBS: Ao usar o CoreScheduler, garantir com que os métodos dos módulos em callback possam ser chamados em PreStart_1, 
+ *       ou registrar apenas métodos que registrem uma "fila de chamados" que sejam executados posteriormente quando o módulo esteja realmente pronto. Isto é, 
+ *       o método registrar que ele foi chamado e só realmente executar sua lógica depois, com o próprio módulo que usa o CoreScheduler sendo responsável por isso.
+ */
 
 public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 {
@@ -26,32 +32,18 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     private IPersistance persistance = persistance;
 
     private PriorityQueue<ScheduledCallback, DateTimeOffset> scheduledCallbacksQueue = new();
-    private Dictionary<(uint Id, Type ModuleType), ScheduledCallback> scheduledCallbacksDict = new();
+    private Dictionary<(ulong Id, Type ModuleType), ScheduledCallback> scheduledCallbacksDict = new();
     private Task nextTask = null;
     private CancellationTokenSource cancellationToken = new();
     
 
 
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
     {
         // TODO: Carregar as configurações do Scheduler        
-
-        this.serverContext = serverContext;
-        JsonNode callbackArray;
-
-        if (await persistance.KeyExists("CoreSchedulerData.json"))
-            callbackArray = JsonNode.Parse(await persistance.ReadJSON("CoreSchedulerData"));
-        else
-            callbackArray = new JsonArray([]);
-
-        foreach (var JsonObject in callbackArray.AsArray())
-        {
-            ScheduledCallback callback = DeserializeScheduledCallback(JsonObject.AsObject());
-            EnqueueNew(callback, false);
-        }
-               
-        RunScheduler();
-        return true;
+        this.serverContext = serverContext;        
+        
+        return Task.FromResult(true);
     }
 
     public async Task<bool> Shutdown()
@@ -88,8 +80,27 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return true;
     }
 
-    public Task Start() => Task.CompletedTask;    
+    public async Task PreStart_1()
+    {
+        JsonNode callbackArray;
 
+        if (await persistance.KeyExists("CoreSchedulerData.json"))
+            callbackArray = JsonNode.Parse(await persistance.ReadJSON("CoreSchedulerData"));
+        else
+            callbackArray = new JsonArray([]);
+
+        foreach (var JsonObject in callbackArray.AsArray())
+        {
+            ScheduledCallback callback = DeserializeScheduledCallback(JsonObject.AsObject());
+            EnqueueNew(callback, false);
+        }
+
+        RunScheduler();
+    }
+
+    public Task PreStart_0() => Task.CompletedTask;
+
+    public Task Start() => Task.CompletedTask;    
 
 
     // Agenda novos callbacks e cancelar callbacks agendados (adicionar novo callback na fila, executar o scheduler)
@@ -128,7 +139,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         {
             ScheduledCallback expiredCallback = scheduledCallbacksQueue.Dequeue();
             scheduledCallbacksDict.Remove((expiredCallback.ID, expiredCallback.Owner.ModuleType));
-            InvokeCallback(expiredCallback);
+            InvokeCallback(expiredCallback).Wait();
             DispatchCallback(expiredCallback);
         }
 
@@ -143,13 +154,25 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
 
     // Método que invoca e executa o callback registrado
-    private void InvokeCallback(ScheduledCallback callback)
+    private async Task InvokeCallback(ScheduledCallback callback)
     {        
         MethodInfo method = callback.MethodInfo;
         Type type = callback.Owner.ModuleType;
         object instance = serverContext.GetModule(type);
 
-        method.Invoke(instance, callback.Parameters);        
+        try
+        {
+            object task = method.Invoke(instance, callback.Parameters);
+
+            if (task is Task _task)
+            {
+                await _task;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine((this as IModule).LogName + " Error invoking callback " + method + ": "+ ex.Message);
+        }
     }
 
     // Método que lida com o fim do agendamento e cria um novo callback de acordo com o tipo do callback, se necessário
@@ -208,7 +231,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
 
     // Métodos de IScheduler, Criar métodos para criar diferentes tipos de callback, de acordo com seu tipo        
-    public bool ScheduleCallback(Delegate callback, object[] parameters, uint ID, DateTimeOffset execution, bool ManagedCallback = true)
+    public bool ScheduleCallback(Delegate callback, object[] parameters, ulong ID, DateTimeOffset execution, bool ManagedCallback = true)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
 
@@ -218,7 +241,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, uint ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, ulong ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         nextExecution ??= DateTimeOffset.Now + repeatInterval;
 
@@ -230,7 +253,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, uint ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, ulong ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
 
@@ -241,7 +264,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, uint ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, ulong ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
         newCallback.ScheduleType = ScheduleType.MonthlyRepeat;
@@ -251,7 +274,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, uint ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, ulong ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
     {
         ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
         newCallback.ScheduleType = ScheduleType.YearlyRepeat;
@@ -320,7 +343,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
 
 
-        JsonValue id = JsonValue.Create<uint>(callback.ID);
+        JsonValue id = JsonValue.Create<ulong>(callback.ID);
         JsonValue manageId = JsonValue.Create<bool>(callback.ManageID);
         JsonObject owner = SerializeSchedulableModule(callback.Owner);
         JsonObject methodInfo = SerializeMethodInfo(callback.MethodInfo);        
@@ -421,7 +444,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
         callback.YearlyRepeat_Dates = datesRepeatDates.ToArray();
 
-        callback.ID = serializedScheduledCallback["ID"].GetValue<uint>();
+        callback.ID = serializedScheduledCallback["ID"].GetValue<ulong>();
         callback.ManageID = serializedScheduledCallback["ManageID"].GetValue<bool>();
         callback.Owner = DeserializeSchedulableModule(serializedScheduledCallback["Owner"].AsObject());
         callback.MethodInfo = DeserializeMethodInfo(serializedScheduledCallback["MethodInfo"].AsObject());
@@ -455,7 +478,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         string methodName = serializedMethodInfo["MethodName"].GetValue<string>();
 
         Type declaringType = Type.GetType(declaringTypeName);
-        MethodInfo methodInfo = declaringType.GetMethod(methodName);
+        MethodInfo methodInfo = declaringType.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
 
         return methodInfo;
     }
@@ -496,7 +519,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         public DateTimeOffset[] YearlyRepeat_Dates { get; set; }
 
         // ID do callback; Pode ser usado pelas classes clientes para gerenciar callbacks agendados, evitando duplicações de agendamentos para a mesma coisa
-        public uint ID { get; set; }
+        public ulong ID { get; set; }
         // Se verdadeiro, o Scheduler automaticamente verifica se já existe um callback com o mesmo ID e Owner antes de agendar um novo; Se existir, o novo não é agendado. Útil para evitar agendamentos duplicados.        
         // Se falso, o callback é sempre agendado (Útil para callbacks únicos/dinâmicos). Não é possil rastrear ou cancelar esses tipos de callbacks
         public bool ManageID { get; set; } = true;
@@ -603,7 +626,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             }
         }
 
-        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, uint ID, bool ManagedCallback = true)
+        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, ulong ID, bool ManagedCallback = true)
         {
             ScheduledCallback c = new();
 

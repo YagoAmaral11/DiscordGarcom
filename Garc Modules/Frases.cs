@@ -3,13 +3,13 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
-using GarçomDoKitts.Containers.Core;
+using DiscordGarçom.Containers.Core;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.GarcModules;
+namespace DiscordGarçom.GarcModules;
 
 [Command("Frases")]
 public class Frases(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
@@ -89,7 +89,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return true;
     }
 
-    public async Task Start()
+    public async Task PreStart_0()
     {
         ready = false;
         origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
@@ -100,6 +100,11 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         await Fetch();
 
+        ready = true;
+    }
+
+    public Task Start()
+    {        
         // Inicializa agendamentos        
         SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
         for (int i = 0; i < 7; i++)
@@ -108,8 +113,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         }
 
         scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
-
-        ready = true;
+        return Task.CompletedTask;
     }
 
 
@@ -171,27 +175,47 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
     [Command("Aleatoria")]
     public async Task RandomMessage(CommandContext context)
     {
-        if (context.Guild != serverContext.BindedDiscordServer || !ready)
+        if (!serverContext.ReadyForCommands)
             return;
 
-        ulong messageID = ChooseRandomMessage();
-        DiscordMessage msg = await origin.GetMessageAsync(messageID);
-        DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
-        await context.RespondAsync(embed);
+        try
+        {
+            if (context.Guild != serverContext.BindedDiscordServer || !ready)
+                return;
+
+            ulong messageID = ChooseRandomMessage();
+            DiscordMessage msg = await origin.GetMessageAsync(messageID);
+            DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
+            await context.RespondAsync(embed);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule) this).LogName + $" Error in RandomMessage command: {e.Message}");
+        }        
     }
 
     // Reenvia a mensagem diária atual como resposta para o comando
     [Command("Diaria")]
     public async Task ResendDaily(CommandContext context)
     {
-        if (daily != null)
+        if (!serverContext.ReadyForCommands)
+            return;
+
+        try
         {
-            await context.RespondAsync(CreateDailyMessageToSend(daily));
+            if (daily != null)
+            {
+                await context.RespondAsync(CreateDailyMessageToSend(daily));
+            }
+            else
+            {
+                await context.RespondAsync("Muito cedo chefe!\nA mensagem diária não foi escolhida ainda");
+            }
         }
-        else
+        catch (Exception e)
         {
-            await context.RespondAsync("Muito cedo chefe!\nA mensagem diária não foi escolhida ainda");
-        }
+            Console.WriteLine(((IModule) this).LogName + $" Error in ResendDaily command: {e.Message}");
+        }        
     }
 
 
@@ -318,13 +342,13 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         if (!config.DoDaily)
             return;
 
-        ulong messageID = ChooseRandomMessage();
-        DiscordMessage msg = await origin.GetMessageAsync(messageID);
+        ulong messageID = ChooseRandomMessage();        
+        DiscordMessage msg = await origin.GetMessageAsync(messageID);        
 
         daily = msg;        
         data.DailyID = msg.Id;
 
-        await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));
+        await broadcast.SendMessageAsync(CreateDailyMessageToSend(daily));        
     }
    
 

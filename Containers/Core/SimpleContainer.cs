@@ -3,13 +3,13 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Entities;
-using GarçomDoKitts.Containers.Core.DSharpPlusAdapters;
+using DiscordGarçom.Containers.Core.DSharpPlusAdapters;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modules, ulong LinkedServerID) : IServerContext
 {
@@ -17,6 +17,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
     public IList<IModule> modules = modules.ToList();
     public IPersistance persistance = persistance;   
     private readonly ulong linkedServerID = LinkedServerID;
+    private bool readyForCommands = false; 
 
     // Config Data
     public static string Name => "SimpleContainer";
@@ -30,6 +31,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
     private DiscordClient discordClient; public DiscordClient BotDiscordClient => discordClient;
     private DiscordGuild shellGuild; public DiscordGuild BindedDiscordServer => shellGuild;
     public DiscordUser BotDiscordUser => BotDiscordClient.CurrentUser;
+    public bool ReadyForCommands => readyForCommands;
     private IServiceProvider services;
 
 
@@ -87,10 +89,14 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         VerifyDuplicatedModules();
 
         // Inicializa módulos
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Initializing Modules");
+        Console.ResetColor();
         foreach (IModule module in modules)
         {
             await module.Initialize(this, services);
         }
+        Console.WriteLine("[BotContainer]" + " Finalized modules init");
 
         // Configura os event handlers dos eventos do bot
         // Configura a Task que indica o término da inicialização do bot
@@ -122,7 +128,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
             serviceProvider = services;
 
             extension.AddProcessor(textCommandProcessor);
-            extension.AddProcessor(slashCommandProcessor);
+            extension.AddProcessor(slashCommandProcessor);                        
 
             // Registra os comandos dos módulos
             foreach (IModule module in modules)
@@ -138,26 +144,63 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         // Inicializa o bot
         discordClient = dcClientBuilder.Build();
         await discordClient.ConnectAsync();
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("[BotContainer]" + " Connected to discord");
+        Console.ResetColor();
 
         await readyToOperate.Task; // Aguarda o término da inicialização do bot        
 
         // Verifica se o bot está linkado ao servidor específico
         if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == false)
-            return false;
-
-        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Bloquear aqui
+            return false;        
 
         // Finaliza inicialização, preenche o Server context
         shellGuild = val;
         initialTime = DateTime.Now;
 
-        // Começa a execução dos módulos
+        // Pre-começa a execução dos módulos
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Pre-Starting stage 0 start");
+        Console.ResetColor();
         foreach (IModule module in modules)
         {
-            await module.Start();
+            await module.PreStart_0();            
+        }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 0");
+
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Pre-Starting stage 1 start");
+        Console.ResetColor();
+        foreach (IModule module in modules)
+        {
+            await module.PreStart_1();            
+        }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 1");
+
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Pre-Starting stage 2 start");
+        Console.ResetColor();
+        foreach (IModule module in modules)
+        {
+            await module.PreStart_2();            
+        }
+        Console.WriteLine("[BotContainer]" + " Finalized Pre-Start 2");
+
+        // Começa a execução dos módulos
+
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Starting Modules");
+        Console.ResetColor();
+        foreach (IModule module in modules)
+        {
+            await module.Start();            
         }
 
-        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui        
+        readyForCommands = true;
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("[BotContainer]" + " Started all modules. Bot is running.");
+        Console.ResetColor();        
 
         return true;
     }
@@ -231,8 +274,11 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         throw new KeyNotFoundException("Could not find any module of the type " + moduleType.AssemblyQualifiedName);
     }
+    public IEnumerable<IModule> GetAllModules()
+    {
+        return modules;
+    }
 
-        
     private bool VerifyDuplicatedModules()
     {
         HashSet<Type> modulesTypes = new();

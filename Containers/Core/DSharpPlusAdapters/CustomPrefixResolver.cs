@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace GarçomDoKitts.Containers.Core.DSharpPlusAdapters;
+namespace DiscordGarçom.Containers.Core.DSharpPlusAdapters;
 
 /// <summary>
 /// Adiciona um construtor extra para o DefaultPrefixResolver, permitindo que uma coleção de prefixes seja passada.

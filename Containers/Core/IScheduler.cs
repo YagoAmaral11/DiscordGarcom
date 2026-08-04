@@ -2,15 +2,15 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GarçomDoKitts.Containers.Core;
+namespace DiscordGarçom.Containers.Core;
 
 public interface IScheduler
 {    
-    public bool ScheduleCallback(Delegate callback, object[] parameters, uint ID, DateTimeOffset execution, bool ManagedCallback = true);
-    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, uint ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
-    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, uint ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
-    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, uint ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
-    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, uint ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
+    public bool ScheduleCallback(Delegate callback, object[] parameters, ulong ID, DateTimeOffset execution, bool ManagedCallback = true);
+    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, ulong ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
+    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, ulong ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
+    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, ulong ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
+    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, ulong ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null);
 }
 
 public struct SemanalRepeatDay(DayOfWeek dayOfWeek, TimeSpan time, TimeZoneInfo timezone = null)
