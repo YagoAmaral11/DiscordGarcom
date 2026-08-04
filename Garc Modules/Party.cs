@@ -257,6 +257,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
 
 
+    // Limpa o cache de pré-partidas
     private void Internal_ClearTempRegistry()
     {
         preMatches.Clear();
@@ -285,8 +286,9 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
         tempTeamsVoiceChannelsLifespan ??= TimeSpan.FromHours(1);
         var lifespan = DateTimeOffset.Now + tempTeamsVoiceChannelsLifespan.Value;
-        var canalA = await channelManager.NewGeneralTempChannel(lifespan, "•᲼ 🔵 Time A");
-        var canalB = await channelManager.NewGeneralTempChannel(lifespan, "•᲼ 🔴 Time B");
+        var canalA = await channelManager.NewGeneralTempChannel(lifespan, "🔵 Time A");
+        await Task.Delay(1500);
+        var canalB = await channelManager.NewGeneralTempChannel(lifespan, "🔴 Time B");
 
         foreach (var playerID in match.Players)
         {
@@ -580,7 +582,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("out")]
     // O meio legado de criar um mix, removendo certos jogadores do sorteio de times
-    public async Task FastMix_out(CommandContext ctx, [VariadicArgument(99, 1)] DiscordMember[] jogadoresdefora)
+    public async Task FastMix_out(CommandContext ctx, [VariadicArgument(10, 1)] DiscordMember[] jogadoresdefora)
     {
         await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
@@ -589,7 +591,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("maxout")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time e removendo certos jogadores do sorteio de times
-    public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, [VariadicArgument(99, 1)] DiscordMember[] jogadoresdefora)
+    public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, [VariadicArgument(10, 1)] DiscordMember[] jogadoresdefora)
     {
         await ctx.DeferResponseAsync();
         var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
