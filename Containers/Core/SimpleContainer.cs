@@ -17,6 +17,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
     public IList<IModule> modules = modules.ToList();
     public IPersistance persistance = persistance;   
     private readonly ulong linkedServerID = LinkedServerID;
+    private bool readyForCommands = false; 
 
     // Config Data
     public static string Name => "SimpleContainer";
@@ -30,6 +31,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
     private DiscordClient discordClient; public DiscordClient BotDiscordClient => discordClient;
     private DiscordGuild shellGuild; public DiscordGuild BindedDiscordServer => shellGuild;
     public DiscordUser BotDiscordUser => BotDiscordClient.CurrentUser;
+    public bool ReadyForCommands => readyForCommands;
     private IServiceProvider services;
 
 
@@ -126,7 +128,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
             serviceProvider = services;
 
             extension.AddProcessor(textCommandProcessor);
-            extension.AddProcessor(slashCommandProcessor);
+            extension.AddProcessor(slashCommandProcessor);                        
 
             // Registra os comandos dos módulos
             foreach (IModule module in modules)
@@ -150,9 +152,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         // Verifica se o bot está linkado ao servidor específico
         if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == false)
-            return false;
-
-        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Bloquear aqui
+            return false;        
 
         // Finaliza inicialização, preenche o Server context
         shellGuild = val;
@@ -195,11 +195,12 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         {
             await module.Start();            
         }
+
+        readyForCommands = true;
+
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine("[BotContainer]" + " Started all modules. Bot is running.");
-        Console.ResetColor();
-
-        // TODO: Verificar se tem alguma forma de bloquear a execução de comandos até o término da inicialização; Desbloquear aqui        
+        Console.ResetColor();        
 
         return true;
     }

@@ -7,6 +7,9 @@ namespace DiscordGarçom.Containers.Core;
 
 public interface IServerContext
 {
+    // Container Info
+    public bool ReadyForCommands { get; } // Indica se o container está pronto para receber comandos
+
     // Discord Info
     public DiscordGuild BindedDiscordServer { get; } // O Server do Discord que esse shell está vinculado
     public DiscordClient BotDiscordClient { get; } // O Discord Client do bot

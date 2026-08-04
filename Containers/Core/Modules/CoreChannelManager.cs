@@ -275,91 +275,100 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
     [Command("criar")]    
     public async Task CreateTemporaryChannelCmd(CommandContext ctx, TimeSpan duration, bool isPrivate = false, string name = null)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
             await ctx.DeferResponseAsync();
-        }
-        catch
-        {
-            return;
-        }
-        
-        DateTimeOffset exclusionTime = DateTimeOffset.Now.Add(duration);
 
-        if (UserCanCreateTempChannel(ctx.Member.Id))
-        {
-            if (isPrivate == false)
+            DateTimeOffset exclusionTime = DateTimeOffset.Now.Add(duration);
+
+            if (UserCanCreateTempChannel(ctx.Member.Id))
             {
-                var resp = await NewOwnedTempChannel(exclusionTime, ctx.Member.Id, name);
-                await ctx.RespondAsync($"Canal temporário {resp.Item2.Mention} criado com sucesso!");
+                if (isPrivate == false)
+                {
+                    var resp = await NewOwnedTempChannel(exclusionTime, ctx.Member.Id, name);
+                    await ctx.RespondAsync($"Canal temporário {resp.Item2.Mention} criado com sucesso!");
+                }
+                else
+                {
+                    var resp = await NewPrivateTempChannel(exclusionTime, ctx.Member.Id, name);
+                    await ctx.RespondAsync($"Canal privado {resp.Item2.Mention} criado com sucesso!");
+                }
             }
             else
             {
-                var resp = await NewPrivateTempChannel(exclusionTime, ctx.Member.Id, name);
-                await ctx.RespondAsync($"Canal privado {resp.Item2.Mention} criado com sucesso!");
+                await ctx.RespondAsync($"Desculpe, mas você já atingiu o limite de canais temporários que pode criar ({config.TempChannelCountPerUser}). Delete um antigo antes de criar outro.");
             }
         }
-        else
+        catch (Exception e)
         {
-            await ctx.RespondAsync($"Desculpe, mas você já atingiu o limite de canais temporários que pode criar ({config.TempChannelCountPerUser}). Delete um antigo antes de criar outro.");
-        }
+            Console.WriteLine(((IModule)this).LogName + $" Error in CreateTemporaryChannel command: {e.Message}");
+        }                       
     }
 
     [Command("listar")]
     public async Task ListTemporaryChannelsCmd(CommandContext ctx)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
             await ctx.DeferResponseAsync();
+
+            var userChannels = data.TempChannels.Where(r => r.IsOwned && r.OwnerID == ctx.Member.Id).ToList();
+
+            if (userChannels.Count == 0)
+            {
+                await ctx.RespondAsync("Você não possui canais temporários ativos.");
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Seus canais temporários ativos:");
+            foreach (var channel in userChannels)
+            {
+                var discordChannel = await serverContext.BindedDiscordServer.GetChannelAsync(channel.ChannelID);
+                sb.AppendLine($"* {discordChannel.Mention} (Exclusão: {channel.ExclusionTime})");
+            }
+
+            await ctx.RespondAsync(sb.ToString());
         }
-        catch
+        catch (Exception e)
         {
-            return;
-        }
-
-        var userChannels = data.TempChannels.Where(r => r.IsOwned && r.OwnerID == ctx.Member.Id).ToList();
-
-        if (userChannels.Count == 0)
-        {
-            await ctx.RespondAsync("Você não possui canais temporários ativos.");
-            return;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.AppendLine("Seus canais temporários ativos:");
-        foreach (var channel in userChannels)
-        {
-            var discordChannel = await serverContext.BindedDiscordServer.GetChannelAsync(channel.ChannelID);
-            sb.AppendLine($"* {discordChannel.Mention} (Exclusão: {channel.ExclusionTime})");
-        }
-
-        await ctx.RespondAsync(sb.ToString());
+            Console.WriteLine(((IModule)this).LogName + $" Error in ListTemporaryChannels command: {e.Message}");
+        }        
     }
 
     [Command("deletar")]
     public async Task DeleteTemporaryChannelCmd(CommandContext ctx, DiscordChannel channel)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
             await ctx.DeferResponseAsync();
-        }
-        catch
-        {
-            return;
-        }        
 
-        var registry = data.TempChannels.FirstOrDefault(r => r.ChannelID == channel.Id && r.IsOwned && r.OwnerID == ctx.Member.Id);
+            var registry = data.TempChannels.FirstOrDefault(r => r.ChannelID == channel.Id && r.IsOwned && r.OwnerID == ctx.Member.Id);
 
-        if (registry != null)
-        {
-            string tmpName = channel.Name;
-            await DeleteTempChannel(channel.Id);
-            await ctx.RespondAsync($"Canal temporário {tmpName} deletado com sucesso!");
+            if (registry != null)
+            {
+                string tmpName = channel.Name;
+                await DeleteTempChannel(channel.Id);
+                await ctx.RespondAsync($"Canal temporário {tmpName} deletado com sucesso!");
+            }
+            else
+            {
+                await ctx.RespondAsync("Você não possui permissão para deletar este canal temporário.");
+            }
         }
-        else
+        catch (Exception e)
         {
-            await ctx.RespondAsync("Você não possui permissão para deletar este canal temporário.");
-        }
+            Console.WriteLine(((IModule)this).LogName + $" Error in DeleteTemporaryChannel command: {e.Message}");
+        }                        
     }
 
 }

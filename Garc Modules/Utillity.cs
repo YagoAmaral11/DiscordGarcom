@@ -47,6 +47,9 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     // TODO: Adicionar um cooldown para esse comando, para evitar spam
     public async Task DeafenMention(CommandContext ctx)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {            
             DiscordMember pedinte = ctx.Member;
@@ -93,6 +96,9 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     [Description("Conta os usuários em uma call ou chat")]
     public async Task UserCount(CommandContext ctx, [Description("Canal para contar usuários")] DiscordChannel canal = null)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
             if (canal == null)
@@ -138,6 +144,9 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     [Description("Move todos os usuários de uma call para outra")]
     public async Task UserMove(CommandContext ctx, [Description("Call de destino")] DiscordChannel destino, [Description("Move os usuários dessa call")] DiscordChannel origem = null)
     {
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
             await ctx.DeferResponseAsync();

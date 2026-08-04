@@ -90,24 +90,28 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
     }
 
-    [Command("Backup")]
+    [Command("Backup")]    
     public async Task RealizeBackupCmd(CommandContext ctx)
     {
-        // TODO: Limitar isso à somente administradores do bot
+        // TODO: Limitar isso à somente administradores do bot        
+        if (!serverContext.ReadyForCommands)
+            return;
+
         try
         {
-            await ctx.DeferResponseAsync();
-        }
-        catch {}
+            if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
+            {
+                await ctx.RespondAsync("Você não tem permissão para usar esse comando.");
+                return;
+            }
 
-        if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
-        {
-            await ctx.RespondAsync("Você não tem permissão para usar esse comando.");
-            return;
+            await RealizeBackup();
+            await ctx.RespondAsync("Backup realizado");
         }
-        
-        await RealizeBackup();
-        await ctx.RespondAsync("Backup realizado");
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in RealizeBackup command: {e.Message}");
+        }        
     }
 
 }

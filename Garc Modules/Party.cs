@@ -565,37 +565,77 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     // Ainda cria um botão para mover todos de volta para um outra call de "lobby", para o pós jogo.
     [Command("sortear")]
     public async Task FastMix(CommandContext ctx)
-    {        
-        await ctx.DeferResponseAsync();
-        var result = await AutoVoiceChatSort(ctx.Member);
-        await Internal_fastMix(ctx, result);
+    {
+        if (!serverContext.ReadyForCommands)
+            return;
+
+        try
+        {
+            await ctx.DeferResponseAsync();
+            var result = await AutoVoiceChatSort(ctx.Member);
+            await Internal_fastMix(ctx, result);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix command: {e.Message}");
+        }        
     }
 
     [Command("max")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time
     public async Task FastMix_max(CommandContext ctx, uint jogadoresmax)
     {
-        await ctx.DeferResponseAsync();
-        var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax);
-        await Internal_fastMix(ctx, result);
+        if (!serverContext.ReadyForCommands)
+            return;
+
+        try
+        {
+            await ctx.DeferResponseAsync();
+            var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax);
+            await Internal_fastMix(ctx, result);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_max command: {e.Message}");
+        }
     }
 
     [Command("out")]
     // O meio legado de criar um mix, removendo certos jogadores do sorteio de times
     public async Task FastMix_out(CommandContext ctx, [VariadicArgument(10, 1)] DiscordMember[] jogadoresdefora)
     {
-        await ctx.DeferResponseAsync();
-        var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
-        await Internal_fastMix(ctx, result);
+        if (!serverContext.ReadyForCommands)
+            return;
+
+        try
+        {
+            await ctx.DeferResponseAsync();
+            var result = await AutoVoiceChatSort(ctx.Member, excludedPlayers: jogadoresdefora);
+            await Internal_fastMix(ctx, result);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_out command: {e.Message}");
+        }
     }
 
     [Command("maxout")]
     // O meio legado de criar um mix, com um número específício de jogadores máximos por time e removendo certos jogadores do sorteio de times
     public async Task FastMix_maxout(CommandContext ctx, uint jogadoresmax, [VariadicArgument(10, 1)] DiscordMember[] jogadoresdefora)
     {
-        await ctx.DeferResponseAsync();
-        var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
-        await Internal_fastMix(ctx, result);
+        if (!serverContext.ReadyForCommands)
+            return;
+
+        try
+        {
+            await ctx.DeferResponseAsync();
+            var result = await AutoVoiceChatSort(ctx.Member, jogadoresmax, jogadoresdefora);
+            await Internal_fastMix(ctx, result);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_maxout command: {e.Message}");
+        }
     }
 
     private async Task Internal_fastMix(CommandContext ctx, (AutoSortResult result, Partida match, IEnumerable<DiscordMember> leftOut) result)
@@ -680,173 +720,203 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
     // Mostra a partida atual, seja de admin ou de jogador, do pedinte. Se estiver em mais de uma partida, mostra a lista de partidas.
     public async Task CurrentMatch(CommandContext ctx)
     {
-        await ctx.DeferResponseAsync();        
+        if (!serverContext.ReadyForCommands)
+            return;
 
-        var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
-        var partidasAtivasCount = partidasAtivas.Count();
-
-        if (partidasAtivasCount == 1)
+        try
         {
-            var match = partidasAtivas.First().Value;
-            var msg = MatchRender(match);
-            await ctx.RespondAsync(msg);
-        }
-        else if (partidasAtivasCount > 1)
-        {
-            StringBuilder sb = new();
-            sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
+            await ctx.DeferResponseAsync();
 
-            foreach (var partida in partidasAtivas)
-            {
-                sb.AppendLine($"- {partida.Key}");
-            }
+            var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
+            var partidasAtivasCount = partidasAtivas.Count();
 
-            sb.AppendLine("Tente mostrar uma partida em específico");
-            await ctx.RespondAsync(sb.ToString());
+            if (partidasAtivasCount == 1)
+            {
+                var match = partidasAtivas.First().Value;
+                var msg = MatchRender(match);
+                await ctx.RespondAsync(msg);
+            }
+            else if (partidasAtivasCount > 1)
+            {
+                StringBuilder sb = new();
+                sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
+
+                foreach (var partida in partidasAtivas)
+                {
+                    sb.AppendLine($"- {partida.Key}");
+                }
+
+                sb.AppendLine("Tente mostrar uma partida em específico");
+                await ctx.RespondAsync(sb.ToString());
+            }
+            else if (partidasAtivasCount == 0)
+            {
+                if (ctx is SlashCommandContext slashCtx)
+                {
+                    var responseBuilder = new DiscordFollowupMessageBuilder();
+                    responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
+                    await slashCtx.FollowupAsync(responseBuilder);
+                }
+                else
+                {
+                    await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
+                }
+            }
         }
-        else if (partidasAtivasCount == 0)
+        catch (Exception e)
         {
-            if (ctx is SlashCommandContext slashCtx)
-            {
-                var responseBuilder = new DiscordFollowupMessageBuilder();
-                responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
-                await slashCtx.FollowupAsync(responseBuilder);
-            }
-            else
-            {
-                await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
-            }
-        }
+            Console.WriteLine(((IModule)this).LogName + $" Error in CurrentMatch command: {e.Message}");
+        }        
     }
 
     [Command("mostrar")]
     // Mostra a partida do UUID passado
     public async Task CurrentMatch_showId(CommandContext ctx, string id)
     {
-        await ctx.DeferResponseAsync();
+        if (!serverContext.ReadyForCommands)
+            return;
 
-        string uuid = id.ToLower();
-        if (data.PartidasAtivas.TryGetValue(uuid, out Partida partidaAtiva))
+        try
         {
-            var msg = MatchRender(partidaAtiva);
-            await ctx.RespondAsync(msg);
-        }
-        else if (data.PartidasAntigas.TryGetValue(uuid, out Partida partidaAntiga))
-        {
-            var msg = MatchRender(partidaAntiga);
-            await ctx.RespondAsync(msg);
-        }
-        else
-        {
-            if (ctx is SlashCommandContext)
+            await ctx.DeferResponseAsync();
+
+            string uuid = id.ToLower();
+            if (data.PartidasAtivas.TryGetValue(uuid, out Partida partidaAtiva))
             {
-                var responseBuilder = new DiscordFollowupMessageBuilder();
-                responseBuilder.WithContent("Essa partida não existe").AsEphemeral();
-                await ctx.FollowupAsync(responseBuilder);
+                var msg = MatchRender(partidaAtiva);
+                await ctx.RespondAsync(msg);
+            }
+            else if (data.PartidasAntigas.TryGetValue(uuid, out Partida partidaAntiga))
+            {
+                var msg = MatchRender(partidaAntiga);
+                await ctx.RespondAsync(msg);
             }
             else
             {
-                await ctx.RespondAsync("Essa partida não existe");
+                if (ctx is SlashCommandContext)
+                {
+                    var responseBuilder = new DiscordFollowupMessageBuilder();
+                    responseBuilder.WithContent("Essa partida não existe").AsEphemeral();
+                    await ctx.FollowupAsync(responseBuilder);
+                }
+                else
+                {
+                    await ctx.RespondAsync("Essa partida não existe");
+                }
             }
         }
+        catch (Exception e)
+        {
+            Console.WriteLine(((IModule)this).LogName + $" Error in CurrentMatch_showId command: {e.Message}");
+        }        
     }
 
     [Command("finalizar")]
     // Finaliza a partida do UUID passado, ou a partida ativa do pedinte, se ele for admin da partida.
     public async Task EndMatch(CommandContext ctx, string id = null)
     {
-        await ctx.DeferResponseAsync();
-
-        var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
-        var partidasAtivasCount = partidasAtivas.Count();
-
-        if (!string.IsNullOrWhiteSpace(id))
-        {
-            if (!DoMatchExist(id))
-            {
-                if (ctx is SlashCommandContext)
-                {
-                    var responseBuilder = new DiscordFollowupMessageBuilder();
-                    responseBuilder.WithContent("Essa partida não existe! Verifique o ID passado").AsEphemeral();
-                    await ctx.FollowupAsync(responseBuilder);
-                }
-                else
-                {
-                    await ctx.RespondAsync("Essa partida não existe! Verifique o ID passado");
-                }
-
-                return;
-            }
-
-            if (!IsMatchAdmin(id, ctx.Member))
-            {
-                if (ctx is SlashCommandContext)
-                {
-                    var responseBuilder = new DiscordFollowupMessageBuilder();
-                    responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
-                    await ctx.FollowupAsync(responseBuilder);
-                }
-                else
-                {
-                    await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
-                }
-                return;
-            }
-
-            Internal_MatchEnd(id);
-            await ctx.RespondAsync("Partida finalizada!");
+        if (!serverContext.ReadyForCommands)
             return;
-        }
 
-        if (partidasAtivasCount == 1)
+        try
         {
-            var match = partidasAtivas.First().Value;
+            await ctx.DeferResponseAsync();
 
-            if (!IsMatchAdmin(match.UUID, ctx.Member))
+            var partidasAtivas = data.PartidasAtivas.Where(match => match.Value.Admin == ctx.Member.Id || match.Value.Players.Contains(ctx.Member.Id));
+            var partidasAtivasCount = partidasAtivas.Count();
+
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                if (!DoMatchExist(id))
+                {
+                    if (ctx is SlashCommandContext)
+                    {
+                        var responseBuilder = new DiscordFollowupMessageBuilder();
+                        responseBuilder.WithContent("Essa partida não existe! Verifique o ID passado").AsEphemeral();
+                        await ctx.FollowupAsync(responseBuilder);
+                    }
+                    else
+                    {
+                        await ctx.RespondAsync("Essa partida não existe! Verifique o ID passado");
+                    }
+
+                    return;
+                }
+
+                if (!IsMatchAdmin(id, ctx.Member))
+                {
+                    if (ctx is SlashCommandContext)
+                    {
+                        var responseBuilder = new DiscordFollowupMessageBuilder();
+                        responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+                        await ctx.FollowupAsync(responseBuilder);
+                    }
+                    else
+                    {
+                        await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
+                    }
+                    return;
+                }
+
+                Internal_MatchEnd(id);
+                await ctx.RespondAsync("Partida finalizada!");
+                return;
+            }
+
+            if (partidasAtivasCount == 1)
+            {
+                var match = partidasAtivas.First().Value;
+
+                if (!IsMatchAdmin(match.UUID, ctx.Member))
+                {
+                    if (ctx is SlashCommandContext)
+                    {
+                        var responseBuilder = new DiscordFollowupMessageBuilder();
+                        responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+                        await ctx.FollowupAsync(responseBuilder);
+                    }
+                    else
+                    {
+                        await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
+                    }
+                    return;
+                }
+
+                Internal_MatchEnd(match.UUID);
+                await ctx.RespondAsync("Partida finalizada!");
+            }
+            else if (partidasAtivasCount > 1)
+            {
+                StringBuilder sb = new();
+                sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
+
+                foreach (var partida in partidasAtivas)
+                {
+                    sb.AppendLine($"- {partida.Key}");
+                }
+
+                sb.AppendLine("Termine uma partida em específico para começar outra");
+                await ctx.RespondAsync(sb.ToString());
+            }
+            else if (partidasAtivasCount == 0)
             {
                 if (ctx is SlashCommandContext)
                 {
                     var responseBuilder = new DiscordFollowupMessageBuilder();
-                    responseBuilder.WithContent("Você não tem permissão para executar esse comando nessa partida!").AsEphemeral();
+                    responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
                     await ctx.FollowupAsync(responseBuilder);
                 }
                 else
                 {
-                    await ctx.RespondAsync("Você não tem permissão para executar esse comando nessa partida!");
+                    await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
                 }
-                return;
             }
 
-            Internal_MatchEnd(match.UUID);
-            await ctx.RespondAsync("Partida finalizada!");
         }
-        else if (partidasAtivasCount > 1)
+        catch (Exception e)
         {
-            StringBuilder sb = new();
-            sb.AppendLine($"Você está em {partidasAtivasCount} partidas ativas:");
-
-            foreach (var partida in partidasAtivas)
-            {
-                sb.AppendLine($"- {partida.Key}");
-            }
-
-            sb.AppendLine("Termine uma partida em específico para começar outra");
-            await ctx.RespondAsync(sb.ToString());
+            Console.WriteLine(((IModule)this).LogName + $" Error in EndMatch command: {e.Message}");
         }
-        else if (partidasAtivasCount == 0)
-        {
-            if (ctx is SlashCommandContext)
-            {
-                var responseBuilder = new DiscordFollowupMessageBuilder();
-                responseBuilder.WithContent("Você não faz parte de nenhuma partida, seja como jogador ou admin").AsEphemeral();
-                await ctx.FollowupAsync(responseBuilder);
-            }
-            else
-            {
-                await ctx.RespondAsync("Você não faz parte de nenhuma partida, seja como jogador ou admin");
-            }
-        }
-
     }
 
 
