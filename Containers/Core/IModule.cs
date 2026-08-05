@@ -1,5 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using System.Threading.Tasks;
 namespace DiscordGarçom.Containers.Core;
 
 /*  ORDEM DE CHAMADA DOS MÉTODOS:     
+ *  0. ConfigureServices (Usado para adicionar IServices que o módulo usa)
  *  1. Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)
  *  2. ConfigureEventHandlers (Usado para receber eventos do bot)
  *  3. Pre-Start 0 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
@@ -24,6 +26,7 @@ public interface IModule
     public List<Type> GetStaticCommands(); // Usado para registrar comandos de texto e slash commands, que não dependem de dados da instância
     public IEnumerable<CommandBuilder> GetDynamicCommands(); // Usado para registrar comandos de texto e slash commands, que dependem de dados da instância
 
+    public Task ConfigureServices(IServiceCollection services) => Task.CompletedTask; // Permite ao módulo registrar serviços
     public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider);
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb);
 

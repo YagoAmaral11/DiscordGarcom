@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordGarçom.Containers.Core;
 
@@ -87,6 +88,21 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         // Verificar módulos duplicados
         VerifyDuplicatedModules();
+
+        // Adiciona/Inicializa serviços
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Registering Services");
+        Console.ResetColor();
+
+        var serviceCollection = new ServiceCollection();
+        foreach (IModule module in modules)
+        {
+            await module.ConfigureServices(serviceCollection);
+        }
+        services = serviceCollection.BuildServiceProvider();
+
+        Console.WriteLine("[BotContainer]" + " Services Registered & Started");
+
 
         // Inicializa módulos
         Console.ForegroundColor = ConsoleColor.DarkCyan;
