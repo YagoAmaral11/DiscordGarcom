@@ -31,6 +31,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     private IServerContext serverContext;
     private IPersistance persistance = persistance;
 
+    private readonly object scheduledCallbackLock = new();
     private PriorityQueue<ScheduledCallback, DateTimeOffset> scheduledCallbacksQueue = new();
     private Dictionary<(ulong Id, Type ModuleType), ScheduledCallback> scheduledCallbacksDict = new();
     private Task nextTask = null;
@@ -108,47 +109,53 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     // Assim sendo possível executar o Scheduler uma vez só
     private bool EnqueueNew(ScheduledCallback callback, bool runScheduler = true)
     {
-        if (callback.ManageID == true)
+        lock (scheduledCallbackLock)
         {
-            if (scheduledCallbacksDict.TryGetValue((callback.ID, callback.Owner.ModuleType), out _))
-                return false; // Callback com mesmo ID e Owner já existe, não agendar
-        }
+            if (callback.ManageID == true)
+            {
+                if (scheduledCallbacksDict.TryGetValue((callback.ID, callback.Owner.ModuleType), out _))
+                    return false; // Callback com mesmo ID e Owner já existe, não agendar
+            }
 
-        scheduledCallbacksDict.Add((callback.ID, callback.Owner.ModuleType), callback);
-        scheduledCallbacksQueue.Enqueue(callback, callback.NextExecution);
+            scheduledCallbacksDict.Add((callback.ID, callback.Owner.ModuleType), callback);
+            scheduledCallbacksQueue.Enqueue(callback, callback.NextExecution);
 
-        if (runScheduler)
-            RunScheduler();
+            if (runScheduler)
+                RunScheduler();
 
-        return true;
+            return true;
+        }        
     }
 
     // Método scheduler, que verifica os callbacks agendados, executa os que devem ser executados até aquele momento, rearranja a E. D. e aguarda o próximo callback 
     // (verifica se o último callback expirou, executa todos os callbacks expirados da fila e remove eles do dicionário, cancela a antiga Task de delay, cria nova Task de delay com um novo cancelation token)
     private void RunScheduler()
     {
-        // Cancela a última Task de Delay
-        if (nextTask != null)
+        lock (scheduledCallbackLock)
         {
-            cancellationToken.Cancel();
-            nextTask = null;
-        }                    
+            // Cancela a última Task de Delay
+            if (nextTask != null)
+            {
+                cancellationToken.Cancel();
+                nextTask = null;
+            }
 
-        // Verifica possíveis callbacks expirados, e executa eles        
-        while (scheduledCallbacksQueue.Count > 0 && scheduledCallbacksQueue.Peek().NextExecution <= DateTimeOffset.Now)
-        {
-            ScheduledCallback expiredCallback = scheduledCallbacksQueue.Dequeue();
-            scheduledCallbacksDict.Remove((expiredCallback.ID, expiredCallback.Owner.ModuleType));
-            InvokeCallback(expiredCallback).Wait();
-            DispatchCallback(expiredCallback);
-        }
+            // Verifica possíveis callbacks expirados, e executa eles        
+            while (scheduledCallbacksQueue.Count > 0 && scheduledCallbacksQueue.Peek().NextExecution <= DateTimeOffset.Now)
+            {
+                ScheduledCallback expiredCallback = scheduledCallbacksQueue.Dequeue();
+                scheduledCallbacksDict.Remove((expiredCallback.ID, expiredCallback.Owner.ModuleType));
+                InvokeCallback(expiredCallback).Wait();
+                DispatchCallback(expiredCallback);
+            }
 
-        // Cria uma Task para aguardar o próximo callback
-        if (scheduledCallbacksQueue.Count > 0)
-        {
-            ScheduledCallback nextScheduledCallback = scheduledCallbacksQueue.Peek();
-            cancellationToken = new();
-            nextTask = DelayUntil(nextScheduledCallback.NextExecution, cancellationToken.Token);            
+            // Cria uma Task para aguardar o próximo callback
+            if (scheduledCallbacksQueue.Count > 0)
+            {
+                ScheduledCallback nextScheduledCallback = scheduledCallbacksQueue.Peek();
+                cancellationToken = new();
+                nextTask = DelayUntil(nextScheduledCallback.NextExecution, cancellationToken.Token);
+            }
         }        
     }
 
@@ -171,7 +178,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
         catch (Exception ex)
         {
-            Console.WriteLine((this as IModule).LogName + " Error invoking callback " + method + ": "+ ex.Message);
+            await ((IModule) this).DumpException(ex, persistance);            
         }
     }
 
@@ -558,14 +565,13 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
                             // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
                             // Caso contrário, essa repetição deve ser da próxima semana
-                            DateTime dataAtual = currentDate.Date;
-                            DateTime dataRepetição = new DateTime(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks));
-                            DateTimeOffset dataRepetiçãoOffset = TimeZoneInfo.ConvertTime(dataRepetição, s.TimeZone);
+                            DateTimeOffset dataAtual = DateTimeOffset.Now;
+                            DateTimeOffset dataRepetiçãoOffset = new DateTimeOffset(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                            
 
                             if (dif == 0 && currentDate >= dataRepetiçãoOffset)
                                 dif = 7;
 
-                            return TimeZoneInfo.ConvertTime(currentDate.Date.AddDays(dif).Add(s.TimeOfDay), s.TimeZone);
+                            return currentDate.AddDays(dif).Add(s.TimeOfDay);
                         }
                     ).Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();
 

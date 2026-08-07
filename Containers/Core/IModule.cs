@@ -3,6 +3,7 @@ using DSharpPlus.Commands.Trees;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core;
@@ -52,5 +53,30 @@ public interface IModule
     }
 
     public Task<bool> SaveData();    
+
+    // TODO: Depois passar isso para base Module
+    public async Task<bool> DumpException(Exception e, IPersistance persistance)
+    {
+        DateTime time = DateTime.Now;
+        Console.WriteLine(LogName + $" Error at time {time.ToString()}: " + e);
+        string filename = time.ToFileTimeUtc().ToString();
+
+        try
+        {
+            StringBuilder stringBuilder = new();
+            stringBuilder.AppendLine($"{e.HResult}: {e.Source} | " + e.Message);
+            stringBuilder.AppendLine(e.StackTrace);
+            var str = stringBuilder.ToString();
+
+            await persistance.WriteRaw(str, "ErrorDumps" + filename, ".txt");
+        }
+        catch (Exception e2)
+        {
+            Console.WriteLine(LogName + $" Error trying to dump exception: " + e2);
+            return false;
+        }
+
+        return true;
+    }
 
 }

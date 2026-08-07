@@ -190,7 +190,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in RandomMessage command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }        
     }
 
@@ -214,7 +214,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in ResendDaily command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }        
     }
 

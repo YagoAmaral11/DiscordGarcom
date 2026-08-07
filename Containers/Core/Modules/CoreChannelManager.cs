@@ -304,7 +304,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in CreateTemporaryChannel command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }                       
     }
 
@@ -338,7 +338,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in ListTemporaryChannels command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }        
     }
 
@@ -367,7 +367,7 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in DeleteTemporaryChannel command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }                        
     }
 

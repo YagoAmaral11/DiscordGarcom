@@ -88,7 +88,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in DeafenMention command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 
@@ -136,7 +136,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in UserCount command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 
@@ -178,7 +178,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in UserMove command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 

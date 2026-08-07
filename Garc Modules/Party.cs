@@ -577,7 +577,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }        
     }
 
@@ -596,7 +596,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_max command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 
@@ -615,7 +615,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_out command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 
@@ -634,7 +634,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in FastMix_maxout command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 
@@ -765,7 +765,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in CurrentMatch command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }        
     }
 
@@ -807,7 +807,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in CurrentMatch_showId command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);            
         }        
     }
 
@@ -915,7 +915,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in EndMatch command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);            
         }
     }
 

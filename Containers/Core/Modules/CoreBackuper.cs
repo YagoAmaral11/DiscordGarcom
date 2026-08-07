@@ -79,13 +79,21 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
                 continue;
 
             Console.WriteLine((this as IModule).LogName + " backing up module " + module.LogName);
-            if (await module.SaveData())
+
+            try
             {
-                Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " completed successfully.");
+                if (await module.SaveData())
+                {
+                    Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " completed successfully.");
+                }
+                else
+                {
+                    Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " failed.");
+                }
             }
-            else
+            catch (Exception e)
             {
-                Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " failed.");
+                await ((IModule) this).DumpException(e, persistance);
             }
         }
     }
@@ -110,7 +118,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in RealizeBackup command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);            
         }        
     }
 
