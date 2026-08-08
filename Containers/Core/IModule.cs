@@ -68,7 +68,7 @@ public interface IModule
             stringBuilder.AppendLine(e.StackTrace);
             var str = stringBuilder.ToString();
 
-            await persistance.WriteRaw(str, "ErrorDumps" + filename, ".txt");
+            await persistance.WriteRaw(str, "ErrorDumps/" + filename, ".txt");
         }
         catch (Exception e2)
         {
