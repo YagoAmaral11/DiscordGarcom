@@ -1,6 +1,7 @@
 ﻿using DiscordGarçom.Containers.Core;
 using DiscordGarçom.Containers.Core.Modules;
 using DSharpPlus;
+using DSharpPlus.Clients;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
@@ -74,7 +75,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         {
             c.BaseAddress = new Uri($"{config.LavalinkIP}:{config.LavalinkPort}");
             c.Passphrase = config.LavalinkKeyword;
-        });
+        });        
         
         return;
     }
@@ -99,7 +100,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             SelfMute = false            
         };        
 
-        var result = await audioService.Players.RetrieveAsync(serverContext.BindedDiscordServer.Id, channelId, PlayerFactory.Default, (IOptions<LavalinkPlayerOptions>) lavalinkPlayerOptions, playerRetrieveOptions);
+        var result = await audioService.Players.RetrieveAsync(serverContext.BindedDiscordServer.Id, channelId, PlayerFactory.Default, Options.Create(lavalinkPlayerOptions), playerRetrieveOptions);
         return result;
     }    
 

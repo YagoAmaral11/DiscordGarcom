@@ -145,8 +145,9 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         );
 
         // Inicializa o bot
-        discordClient = dcClientBuilder.Build();
-        await discordClient.ConnectAsync();
+        discordClient = dcClientBuilder.Build();        
+        await discordClient.ConnectAsync();        
+
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine("[BotContainer]" + " Connected to discord");
         Console.ResetColor();
@@ -157,7 +158,6 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         Console.ResetColor();
 
         var serviceCollection = new ServiceCollection();        
-        serviceCollection.AddShardedDiscordClient(Token, DiscordIntents.All); // Adiciona um client sharded como serviço que módulos possam usar
 
         foreach (IModule module in modules)
         {

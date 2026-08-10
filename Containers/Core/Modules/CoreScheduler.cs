@@ -569,12 +569,12 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                             // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
                             // Caso contrário, essa repetição deve ser da próxima semana
                             DateTimeOffset dataAtual = DateTimeOffset.Now;
-                            DateTimeOffset dataRepetiçãoOffset = new DateTimeOffset(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                            
+                            DateTimeOffset dataRepetiçãoOffset = new DateTimeOffset(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                                                        
 
                             if (dif == 0 && currentDate >= dataRepetiçãoOffset)
                                 dif = 7;
 
-                            return currentDate.AddDays(dif).Add(s.TimeOfDay);
+                            return dataRepetiçãoOffset.AddDays(dif);
                         }
                     ).Where(d => d > currentDate).OrderBy(d => d).FirstOrDefault();
 

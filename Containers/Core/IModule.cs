@@ -59,9 +59,9 @@ public interface IModule
     // TODO: Depois passar isso para base Module
     public async Task<bool> DumpException(Exception e, IPersistance persistance)
     {
-        DateTime time = DateTime.Now;
+        DateTimeOffset time = DateTimeOffset.Now;
         Console.WriteLine(LogName + $" Error at time {time.ToString()}: " + e);
-        string filename = time.ToFileTimeUtc().ToString();
+        string filename = $"{time.Date.Year}-{time.Date.Month}-{time.Date.Day}_{time.Hour}-{time.Minute}-{time.Second}-{time.Millisecond}{time.Offset.ToString()}";
 
         try
         {
