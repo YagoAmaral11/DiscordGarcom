@@ -2,6 +2,7 @@
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -15,7 +16,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
     CoreBackuperConfig config;
     IPersistance persistance = persistance;
     IConfigPersistance configPersistance = configPersistance;
-    IScheduler scheduler = scheduler;
+    IScheduler scheduler = scheduler;    
 
     public string Name => "CoreBackuper";
 
@@ -29,7 +30,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
 
 
 
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public async Task<bool> Initialize(IServerContext serverContext)
     {
         IModule mod = this;
 
@@ -54,7 +55,9 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
 
         return true;
-    }    
+    }
+
+    public Task ReceiveServices(IServiceProvider serviceProvider) => Task.CompletedTask;
 
     public Task PreStart_0() => Task.CompletedTask;
 

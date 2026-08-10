@@ -39,12 +39,14 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         jukebox.WithName("Jukebox");
 
         CommandBuilder play = CommandBuilder.From(Play).WithParent(jukebox);
-        
+
+        jukebox.WithSubcommands([play]);
+
         return [jukebox];
     }
 
 
-    public async Task ConfigureServices(IServiceCollection services)
+    public override async Task ConfigureServices(IServiceCollection services)
     {
         // Carrega as configs aqui pois precisa delas para configurar o serviço do lavalink
         if (await configPersistance.ConfigExists(this))
@@ -77,14 +79,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         return;
     }
 
-    public override async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public override Task PreStart_0()
     {
-        await base.Initialize(serverContext, serviceProvider);
-
-        audioService = serviceProvider.GetService<IAudioService>();
+        audioService = services.GetService<IAudioService>();
         ArgumentNullException.ThrowIfNull(audioService);
-
-        return true;
+        return Task.CompletedTask;
     }
 
     public override Task Start() => Task.CompletedTask;    
@@ -147,7 +146,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule) this).LogName + $" Error in Play command: {e.Message}");
+            await ((IModule) this).DumpException(e, persistance);
         }
     }
 

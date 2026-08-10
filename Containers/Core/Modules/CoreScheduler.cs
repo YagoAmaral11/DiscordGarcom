@@ -1,6 +1,7 @@
-﻿using DSharpPlus;
+﻿using DiscordGarçom.Containers.IO;
+using DSharpPlus;
 using DSharpPlus.Commands.Trees;
-using DiscordGarçom.Containers.IO;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +25,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
     public Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;
     public IEnumerable<CommandBuilder> GetDynamicCommands() => [];
-    public List<Type> GetStaticCommands() => [];
+    public List<Type> GetStaticCommands() => [];    
 
     private TimeSpan MaxDelayLength = TimeSpan.FromDays(1); // O tempo máximo que uma Task de Delay pode aceitar; Não afeta o agendamento;
 
@@ -39,13 +40,15 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     
 
 
-    public Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public Task<bool> Initialize(IServerContext serverContext)
     {
         // TODO: Carregar as configurações do Scheduler        
         this.serverContext = serverContext;        
         
         return Task.FromResult(true);
     }
+
+    public Task ReceiveServices(IServiceProvider serviceProvider) => Task.CompletedTask;    
 
     public async Task<bool> Shutdown()
     {

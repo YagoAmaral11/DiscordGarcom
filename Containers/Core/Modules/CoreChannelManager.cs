@@ -1,8 +1,9 @@
-﻿using DSharpPlus;
+﻿using DiscordGarçom.GarcModules;
+using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
-using DiscordGarçom.GarcModules;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,10 +65,10 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return [canaisTempCB];
     }
 
-    public List<Type> GetStaticCommands() => [];
+    public List<Type> GetStaticCommands() => [];    
 
 
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public async Task<bool> Initialize(IServerContext serverContext)
     {
         IModule mod = this;
 
@@ -96,6 +97,8 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
 
         return true;
     }
+
+    public Task ReceiveServices(IServiceProvider serviceProvider) => Task.CompletedTask;
 
     public async Task PreStart_0()
     {

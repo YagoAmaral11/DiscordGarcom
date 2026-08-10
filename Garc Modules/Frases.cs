@@ -1,9 +1,10 @@
-﻿using DSharpPlus;
+﻿using DiscordGarçom.Containers.Core;
+using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
-using DiscordGarçom.Containers.Core;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -23,7 +24,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
     private IPersistance persistance = persistance;
     private IConfigPersistance configPersistance = configPersistance;
     private IScheduler scheduler = scheduler;
-    private IServerContext serverContext; // Qual servidor do Discord que o módulo está rodando, usado para pegar informações do servidor
+    private IServerContext serverContext; // Qual servidor do Discord que o módulo está rodando, usado para pegar informações do servidor    
 
     // Cached Channels
     private DiscordChannel origin; // Canal de onde as frases serão coletadas
@@ -57,7 +58,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
     }
 
 
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public async Task<bool> Initialize(IServerContext serverContext)
     {
         IModule mod = this;
 
@@ -69,7 +70,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         rng = new();
         this.serverContext = serverContext;
-        services = serviceProvider;
+        
         config = new();
 
         if (await configPersistance.ConfigExists(this))
@@ -87,6 +88,12 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         await LoadData();        
 
         return true;
+    }
+
+    public Task ReceiveServices(IServiceProvider serviceProvider)
+    {
+        services = serviceProvider;
+        return Task.CompletedTask;
     }
 
     public async Task PreStart_0()

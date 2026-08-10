@@ -4,6 +4,7 @@ using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -18,7 +19,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
 
     protected override bool ThrowExceptionOnMissingConfig => false;
 
-    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
 
     public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {
@@ -181,6 +182,8 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
             await ((IModule) this).DumpException(e, persistance);
         }
     }
+
+    // TODO: FAZER O "SHAKE"
 
 }
 

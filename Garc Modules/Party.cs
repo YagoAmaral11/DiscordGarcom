@@ -8,6 +8,7 @@ using DSharpPlus.Commands.Processors.TextCommands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,12 +65,12 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         return [party];
     }
 
-    public override List<Type> GetStaticCommands() => [];
+    public override List<Type> GetStaticCommands() => [];    
 
 
-    public override async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public override async Task<bool> Initialize(IServerContext serverContext)
     {
-        bool baseReturn = await base.Initialize(serverContext, serviceProvider);
+        bool baseReturn = await base.Initialize(serverContext);
 
         sorter = new();
 

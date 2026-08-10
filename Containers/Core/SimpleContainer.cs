@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using DSharpPlus.Clients;
+using DSharpPlus.Extensions;
 
 namespace DiscordGarçom.Containers.Core;
 
@@ -81,7 +83,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         }
 
         // Inicializa discord client
-        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);
+        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);        
 
         // Usada depois para aguardar o término da inicialização
         TaskCompletionSource<bool> readyToOperate = new();
@@ -89,28 +91,13 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         // Verificar módulos duplicados
         VerifyDuplicatedModules();
 
-        // Adiciona/Inicializa serviços
-        Console.ForegroundColor = ConsoleColor.DarkCyan;
-        Console.WriteLine("[BotContainer]" + " Registering Services");
-        Console.ResetColor();
-
-        var serviceCollection = new ServiceCollection();
-        foreach (IModule module in modules)
-        {
-            await module.ConfigureServices(serviceCollection);
-        }
-        services = serviceCollection.BuildServiceProvider();
-
-        Console.WriteLine("[BotContainer]" + " Services Registered & Started");
-
-
         // Inicializa módulos
         Console.ForegroundColor = ConsoleColor.DarkCyan;
         Console.WriteLine("[BotContainer]" + " Initializing Modules");
         Console.ResetColor();
         foreach (IModule module in modules)
         {
-            await module.Initialize(this, services);
+            await module.Initialize(this);
         }
         Console.WriteLine("[BotContainer]" + " Finalized modules init");
 
@@ -163,6 +150,35 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine("[BotContainer]" + " Connected to discord");
         Console.ResetColor();
+
+        // Adiciona/Inicializa serviços
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Registering Services");
+        Console.ResetColor();
+
+        var serviceCollection = new ServiceCollection();        
+        serviceCollection.AddShardedDiscordClient(Token, DiscordIntents.All); // Adiciona um client sharded como serviço que módulos possam usar
+
+        foreach (IModule module in modules)
+        {
+            await module.ConfigureServices(serviceCollection);
+        }
+        services = serviceCollection.BuildServiceProvider();
+
+        Console.WriteLine("[BotContainer]" + " Services Registered & Started");        
+
+        // Passa o ServiceProvider
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("[BotContainer]" + " Sending Services");
+        Console.ResetColor();       
+
+        foreach (IModule module in modules)
+        {
+            await module.ReceiveServices(services);
+        }        
+
+        Console.WriteLine("[BotContainer]" + " Services Sent");
+
 
         await readyToOperate.Task; // Aguarda o término da inicialização do bot        
 

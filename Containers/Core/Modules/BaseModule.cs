@@ -1,5 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,13 +30,17 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     protected abstract bool ThrowExceptionOnMissingConfig { get; }
 
     public abstract Task ConfigureEventHandlers(EventHandlingBuilder ehb);
+    public virtual Task ConfigureServices(IServiceCollection services) => Task.CompletedTask;
 
     public abstract IEnumerable<CommandBuilder> GetDynamicCommands();
     public abstract List<Type> GetStaticCommands();
     public abstract Task Start();
 
+    public virtual Task PreStart_0() => Task.CompletedTask;
+    public virtual Task PreStart_1() => Task.CompletedTask;
+    public virtual Task PreStart_2() => Task.CompletedTask;
 
-    public virtual async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
+    public virtual async Task<bool> Initialize(IServerContext serverContext)
     {
         if (persistance == null)
             throw new Exception(((IModule) this).LogName + " IPersistance is not assigned to the module");
@@ -43,8 +48,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
         if (configPersistance == null)
             throw new Exception(((IModule) this).LogName + " IConfigPersistance is not assigned to the module");
 
-        this.serverContext = serverContext;
-        this.services = serviceProvider;
+        this.serverContext = serverContext;        
 
         if (await configPersistance.ConfigExists(this))
         {
@@ -70,6 +74,12 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
 
         return true;
     }       
+
+    public virtual Task ReceiveServices(IServiceProvider serviceProvider)
+    {
+        services = serviceProvider;
+        return Task.CompletedTask;
+    }
 
     public virtual async Task<bool> SaveData()
     {

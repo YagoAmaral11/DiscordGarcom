@@ -1,5 +1,6 @@
 ﻿using DSharpPlus;
 using DSharpPlus.Commands.Trees;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
