@@ -30,12 +30,11 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
     // Runtime Data
     private string Token;
-    private DateTime initialTime; public DateTime InitialTime => initialTime;            
+    private DateTimeOffset initialTime; public DateTimeOffset InitialTime => initialTime;            
     private DiscordClient discordClient; public DiscordClient BotDiscordClient => discordClient;
     private DiscordGuild shellGuild; public DiscordGuild BindedDiscordServer => shellGuild;
     public DiscordUser BotDiscordUser => BotDiscordClient.CurrentUser;
-    public bool ReadyForCommands => readyForCommands;
-    private IServiceProvider services;
+    public bool ReadyForCommands => readyForCommands;    
 
 
     private List<Type> GetCommands() => [];
@@ -82,13 +81,10 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
             throw new Exception("Bot Token not found");
         }
 
-        // Inicializa discord client
-        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);        
 
-        // Usada depois para aguardar o término da inicialização
-        TaskCompletionSource<bool> readyToOperate = new();
-
-        // Verificar módulos duplicados
+        
+        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);                
+        TaskCompletionSource<bool> readyToOperate = new(); // Usada depois para aguardar o término da inicialização                                                           
         VerifyDuplicatedModules();
 
         // Inicializa módulos
@@ -127,9 +123,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         // Adiciona e registra os comandos do bot
         dcClientBuilder.UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) =>
-        {
-            serviceProvider = services;
-
+        {           
             extension.AddProcessor(textCommandProcessor);
             extension.AddProcessor(slashCommandProcessor);                        
 
@@ -144,43 +138,45 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
         }
         );
 
-        // Inicializa o bot
-        discordClient = dcClientBuilder.Build();        
-        await discordClient.ConnectAsync();        
-
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("[BotContainer]" + " Connected to discord");
-        Console.ResetColor();
 
         // Adiciona/Inicializa serviços
         Console.ForegroundColor = ConsoleColor.DarkCyan;
         Console.WriteLine("[BotContainer]" + " Registering Services");
         Console.ResetColor();
 
-        var serviceCollection = new ServiceCollection();        
-
-        foreach (IModule module in modules)
+        dcClientBuilder.ConfigureServices(async serviceCollection =>
         {
-            await module.ConfigureServices(serviceCollection);
-        }
-        services = serviceCollection.BuildServiceProvider();
+            foreach (IModule module in modules)
+            {
+                await module.ConfigureServices(serviceCollection);
+            }
+        });              
 
-        Console.WriteLine("[BotContainer]" + " Services Registered & Started");        
+        Console.WriteLine("[BotContainer]" + " Services Registered & Started");
+
+
+        // Cria o Client com os serviços passados e conecta com o Discord
+        discordClient = dcClientBuilder.Build();        
+        await discordClient.ConnectAsync();
+        await readyToOperate.Task; // Aguarda o término da inicialização do bot        
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("[BotContainer]" + " Connected to discord");
+        Console.ResetColor();                               
+
 
         // Passa o ServiceProvider
         Console.ForegroundColor = ConsoleColor.DarkCyan;
         Console.WriteLine("[BotContainer]" + " Sending Services");
-        Console.ResetColor();       
+        Console.ResetColor();
 
         foreach (IModule module in modules)
         {
-            await module.ReceiveServices(services);
-        }        
+            await module.ReceiveServices(discordClient.ServiceProvider);
+        }
 
         Console.WriteLine("[BotContainer]" + " Services Sent");
 
-
-        await readyToOperate.Task; // Aguarda o término da inicialização do bot        
 
         // Verifica se o bot está linkado ao servidor específico
         if (discordClient.Guilds.TryGetValue(linkedServerID, out DiscordGuild val) == false)
@@ -188,7 +184,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
         // Finaliza inicialização, preenche o Server context
         shellGuild = val;
-        initialTime = DateTime.Now;
+        initialTime = DateTimeOffset.Now;
 
         // Pre-começa a execução dos módulos
         Console.ForegroundColor = ConsoleColor.DarkCyan;
