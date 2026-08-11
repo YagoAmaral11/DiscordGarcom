@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -109,7 +110,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
     // Agenda novos callbacks e cancelar callbacks agendados (adicionar novo callback na fila, executar o scheduler)
     // Com runScheduler = false, não executa o scheduler automaticamente; Útil para quando forem registrados vários novos Callbacks em massa
-    // Assim sendo possível executar o Scheduler uma vez só
+    // Assim é possível executar o Scheduler uma vez só
     private bool EnqueueNew(ScheduledCallback callback, bool runScheduler = true)
     {
         lock (scheduledCallbackLock)
@@ -133,23 +134,25 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     // Método scheduler, que verifica os callbacks agendados, executa os que devem ser executados até aquele momento, rearranja a E. D. e aguarda o próximo callback 
     // (verifica se o último callback expirou, executa todos os callbacks expirados da fila e remove eles do dicionário, cancela a antiga Task de delay, cria nova Task de delay com um novo cancelation token)
     private void RunScheduler()
-    {
+    {        
+        List<ScheduledCallback> expiredCallbacks = new();
+
         lock (scheduledCallbackLock)
         {
             // Cancela a última Task de Delay
             if (nextTask != null)
             {
                 cancellationToken.Cancel();
+                cancellationToken.Dispose();
                 nextTask = null;
             }
 
-            // Verifica possíveis callbacks expirados, e executa eles        
+            // Verifica possíveis callbacks expirados, e coloca em uma fila para executar eles
             while (scheduledCallbacksQueue.Count > 0 && scheduledCallbacksQueue.Peek().NextExecution <= DateTimeOffset.Now)
             {
                 ScheduledCallback expiredCallback = scheduledCallbacksQueue.Dequeue();
                 scheduledCallbacksDict.Remove((expiredCallback.ID, expiredCallback.Owner.ModuleType));
-                InvokeCallback(expiredCallback).Wait();
-                DispatchCallback(expiredCallback);
+                expiredCallbacks.Add(expiredCallback);                
             }
 
             // Cria uma Task para aguardar o próximo callback
@@ -159,7 +162,33 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                 cancellationToken = new();
                 nextTask = DelayUntil(nextScheduledCallback.NextExecution, cancellationToken.Token);
             }
-        }        
+        }
+
+        foreach (var expired in expiredCallbacks)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await InvokeCallback(expired);
+                }
+                catch (Exception ex)
+                {
+                    await ((IModule) this).DumpException(ex, persistance);
+                }
+                finally
+                {
+                    try
+                    {
+                        DispatchCallback(expired);
+                    }
+                    catch (Exception e)
+                    {
+                        await ((IModule) this).DumpException(e, persistance);
+                    }
+                }                
+            });
+        }
     }
 
 
@@ -188,18 +217,31 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     // Método que lida com o fim do agendamento e cria um novo callback de acordo com o tipo do callback, se necessário
     private void DispatchCallback(ScheduledCallback callback)
     {        
-        var nextRepeatDate = callback.NextRepeatDate();
+        DateTimeOffset? nextRepeatDate;
+
+        if (callback.AllowLateRepeat)
+        {
+            // Se pode/deve realizar repetições de datas atrasadas e não só o último callback registrado, 
+            // então usa a ultima data de execução para escolher o próximo callback, não a data atual
+            // Funciona pois o DispatchCallback só é executado quando um callback está expirado, então esse callback expirado
+            // já foi executado
+            nextRepeatDate = callback.NextRepeatDate(useAsCurrentDateTime: callback.NextExecution, allowLateRepeat: true);
+        }
+        else
+        {
+            // Se não deve realizar repetições de datas atrasadas, então usa a data inicial para buscar próximos callbacks
+            // O IntervalRepeat funciona corretamente e só seleciona a próxima data futura pois abaixo faz que o callback troque
+            // sua data de NextRepeat até ela ser uma data futura, caso essa flag esteja ativa            
+            nextRepeatDate = callback.NextRepeatDate();
+        }
 
         if (nextRepeatDate == null)
             return; // Esse callback não deve se repetir
 
         if (callback.ManageID)
         {
-            // Agenda o mesma callback novamente, repetindo ele mas trocando a data de nova execução
-            callback.NextExecution = nextRepeatDate.Value;
-            // Não é necessário executar o scheduler novamente, pois é uma repetição; Scheduler já será executado no RunScheduler que
-            // invocou essa função
-            EnqueueNew(callback, false); 
+            callback.NextExecution = nextRepeatDate.Value;            
+            EnqueueNew(callback, true);
         }
         else
         {            
@@ -211,39 +253,46 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     private async Task DelayUntil(DateTimeOffset executionTime, CancellationToken cancellationToken)
     {
         TimeSpan delay = executionTime - DateTimeOffset.Now;
-
-        if (delay < TimeSpan.Zero)
+        
+        if (delay <= TimeSpan.Zero)
         {
-            RunScheduler();
+            // Medida de emergência caso o callback expire exatamente entre o RunScheduler e a criação da Task em DelayUntil.
+            // Executa o Scheduler como Task em outra Thread para evitar StackOverflow caso muitos callbacks estejam com tempo mínimó ótimo para 
+            // essa situação ocorrer
+            // Ao executar o Scheduler novamente, garante que nenhum callback se perda e a Scheduler trave até que outro callback seja adicionado
+            _ = Task.Run(() => RunScheduler(), CancellationToken.None);
             return;
         }
 
         if (delay > MaxDelayLength)
-        {
             delay = MaxDelayLength;
-        }
+
         if (delay.TotalMilliseconds > int.MaxValue)
-        {
             delay = TimeSpan.FromMilliseconds(int.MaxValue); // Task.Delay só aceita o máximo valor de int de delay
-        }
 
         try
         {
             await Task.Delay(delay, cancellationToken);
+
+            RunScheduler(); // Tempo da Task passou naturalmente, fila de callbacks não foi alterada, então deve chamar o Scheduler novamente para executar
+        }
+        catch (OperationCanceledException opC)
+        {
+            // Cancelada intencionalmente pelo Scheduler, não precisa executar o Scheduler novamente pois já está sendo executado;
+            // Exceção Esperada;
         }
         catch (Exception ex)
         {
-        }
-
-        RunScheduler();
+            await ((IModule) this).DumpException(ex, persistance);
+        }        
     }
     
 
 
     // Métodos de IScheduler, Criar métodos para criar diferentes tipos de callback, de acordo com seu tipo        
-    public bool ScheduleCallback(Delegate callback, object[] parameters, ulong ID, DateTimeOffset execution, bool ManagedCallback = true)
+    public bool ScheduleCallback(Delegate callback, object[] parameters, ulong ID, DateTimeOffset execution, bool ManagedCallback = true, bool AllowLateRepeat = false)
     {
-        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
+        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback, AllowLateRepeat);
 
         newCallback.ScheduleType = ScheduleType.Once;
         newCallback.NextExecution = execution;        
@@ -251,11 +300,11 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, ulong ID, TimeSpan repeatInterval, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatEvery(Delegate callback, object[] parameters, ulong ID, TimeSpan repeatInterval, bool ManagedCallback = true, bool AllowLateRepeat = false, DateTimeOffset? nextExecution = null)
     {
         nextExecution ??= DateTimeOffset.Now + repeatInterval;
 
-        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
+        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback, AllowLateRepeat);
         newCallback.ScheduleType = ScheduleType.IntervalRepeat;
         newCallback.IntervalRepeat_Interval = repeatInterval;
         newCallback.NextExecution = nextExecution.Value;                
@@ -263,9 +312,9 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, ulong ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatSemanal(Delegate callback, object[] parameters, ulong ID, SemanalRepeatDay[] repeatDays, bool ManagedCallback = true, bool AllowLateRepeat = false, DateTimeOffset? nextExecution = null)
     {
-        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
+        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback, AllowLateRepeat);
 
         newCallback.ScheduleType = ScheduleType.SemanalRepeat;
         newCallback.SemanalRepeat_Days = repeatDays;
@@ -274,9 +323,9 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, ulong ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatMonthly(Delegate callback, object[] parameters, ulong ID, MonthlyRepeatDate[] repeatDays, bool ManagedCallback = true, bool AllowLateRepeat = false, DateTimeOffset? nextExecution = null)
     {
-        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
+        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback, AllowLateRepeat);
         newCallback.ScheduleType = ScheduleType.MonthlyRepeat;
         newCallback.MonthlyRepeat_Dates = repeatDays;
         newCallback.NextExecution = nextExecution ?? newCallback.NextRepeatDate().Value;
@@ -284,9 +333,9 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         return EnqueueNew(newCallback);
     }
 
-    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, ulong ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, DateTimeOffset? nextExecution = null)
+    public bool ScheduleRepeatYearly(Delegate callback, object[] parameters, ulong ID, DateTimeOffset[] repeatDays, bool ManagedCallback = true, bool AllowLateRepeat = false, DateTimeOffset? nextExecution = null)
     {
-        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback);
+        ScheduledCallback newCallback = ScheduledCallback.FromTemplate(callback, parameters, ID, ManagedCallback, AllowLateRepeat);
         newCallback.ScheduleType = ScheduleType.YearlyRepeat;
         newCallback.YearlyRepeat_Dates = repeatDays;
         newCallback.NextExecution = nextExecution ?? newCallback.NextRepeatDate().Value;
@@ -356,7 +405,8 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         JsonValue id = JsonValue.Create<ulong>(callback.ID);
         JsonValue manageId = JsonValue.Create<bool>(callback.ManageID);
         JsonObject owner = SerializeSchedulableModule(callback.Owner);
-        JsonObject methodInfo = SerializeMethodInfo(callback.MethodInfo);        
+        JsonObject methodInfo = SerializeMethodInfo(callback.MethodInfo);
+        JsonValue allowLateRepeat = JsonValue.Create<bool>(callback.AllowLateRepeat);
 
         JsonArray parameters = new JsonArray();
         if (callback.Parameters != null && callback.Parameters.Length > 0)
@@ -365,19 +415,23 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             {
                 parameters.Add(SerializeObject(param));
             }
-        }        
+        }
+
+
+        serialized["ID"] = id;
+        serialized["Owner"] = owner;
+        serialized["NextExecution"] = nextExecution;
+        serialized["MethodInfo"] = methodInfo;
+        serialized["Parameters"] = parameters;        
+
+        serialized["ManageID"] = manageId;
+        serialized["AllowLateRepeat"] = allowLateRepeat;
 
         serialized["ScheduleType"] = scheduleType;
-        serialized["NextExecution"] = nextExecution;
         serialized["IntervalRepeat_Interval"] = intervalRepeat_interval;
         serialized["SemanalRepeat_Days"] = semanalRepeat_DaysArray;
         serialized["MonthlyRepeat_Dates"] = monthlyRepeat_DatesArray;
-        serialized["DatesRepeat_Dates"] = datesRepeat_DatesArray;
-        serialized["ID"] = id;
-        serialized["ManageID"] = manageId;
-        serialized["Owner"] = owner;
-        serialized["MethodInfo"] = methodInfo;
-        serialized["Parameters"] = parameters;
+        serialized["DatesRepeat_Dates"] = datesRepeat_DatesArray;                                        
 
         return serialized;
     }
@@ -458,6 +512,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         callback.ManageID = serializedScheduledCallback["ManageID"].GetValue<bool>();
         callback.Owner = DeserializeSchedulableModule(serializedScheduledCallback["Owner"].AsObject());
         callback.MethodInfo = DeserializeMethodInfo(serializedScheduledCallback["MethodInfo"].AsObject());
+        callback.AllowLateRepeat = serializedScheduledCallback["AllowLateRepeat"].GetValue<bool>();
 
         List<object> parameters = [];
         foreach (var param in serializedScheduledCallback["Parameters"].AsArray())
@@ -533,6 +588,12 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         // Se verdadeiro, o Scheduler automaticamente verifica se já existe um callback com o mesmo ID e Owner antes de agendar um novo; Se existir, o novo não é agendado. Útil para evitar agendamentos duplicados.        
         // Se falso, o callback é sempre agendado (Útil para callbacks únicos/dinâmicos). Não é possil rastrear ou cancelar esses tipos de callbacks
         public bool ManageID { get; set; } = true;
+        // Se verdadeiro, quando o Scheduler for religado e tiver callbacks atrasados, se esses callbacks tiverem repetições (não forem únicos), 
+        // ele sempre será re-agendado para a sua próxima data programada, mesmo que ela esteja atrasada. Isso faz com que seja possível que um callback atrasado
+        // seja executado várias vezes (para cada vez que atrasou) quando o Scheduler voltar a executar, até a data atual.
+        // Se falso, quando o callback estiver atrasado e sua repetição for re-agendada, ela será automaticamente re-agendada para uma data futura
+        // fazendo com que somente o callback mais atrasado de mesmo ID seja executado.
+        public bool AllowLateRepeat { get; set; } = false;
         // SchedulableModule dono do callback
         public SchedulableModule Owner { get; set; }
         // Callback a ser executado, para que possa ser serializado e buscado em runtime por reflection, permitindo o callback e persistência (MethodInfo)
@@ -541,10 +602,13 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         public object[] Parameters { get; set; }
 
 
-        public DateTimeOffset? NextRepeatDate()
+        public DateTimeOffset? NextRepeatDate(DateTimeOffset? useAsCurrentDateTime = null, bool allowLateRepeat = false)
         {
-            DateTimeOffset? nextRepeat = null;
+            DateTimeOffset? nextRepeat = null;            
             DateTimeOffset currentDate = DateTimeOffset.Now;
+
+            if (useAsCurrentDateTime != null)
+                currentDate = useAsCurrentDateTime.Value;
 
             switch (ScheduleType)
             {
@@ -552,7 +616,36 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                     nextRepeat = null;
                     break;
                 case ScheduleType.IntervalRepeat:
-                    nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value);
+
+                    if (!allowLateRepeat)
+                    {
+                        TimeSpan atraso = currentDate - NextExecution;
+
+                        if (atraso <= TimeSpan.Zero)
+                        {
+                            nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value);
+                        }
+                        else
+                        {
+                            long vezesAtrasado = (long) Math.Ceiling(atraso.TotalMilliseconds / IntervalRepeat_Interval.Value.TotalMilliseconds);
+
+                            // Caso a data de repetição bata exatamente com o horário do relógio
+                            if (NextExecution.Add(IntervalRepeat_Interval.Value * vezesAtrasado) <= currentDate)
+                            {
+                                // Retorna corretamente a exata próxima data para repetição
+                                nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value * (vezesAtrasado + 1));
+                            }
+                            else
+                            {
+                                nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value * vezesAtrasado);
+                            }
+                        }                        
+                    }
+                    else
+                    {
+                        nextRepeat = NextExecution.Add(IntervalRepeat_Interval.Value);
+                    }                        
+
                     break;
                 case ScheduleType.SemanalRepeat:
                     // Cria, de acordo com os dias de repetição semanais, os próximos dias de repetição
@@ -568,7 +661,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
 
                             // Se o dia de hoje é um dia de repetição, verifica se deve repetir hoje ou não;
                             // Caso contrário, essa repetição deve ser da próxima semana
-                            DateTimeOffset dataAtual = DateTimeOffset.Now;
+                            DateTimeOffset dataAtual = currentDate;
                             DateTimeOffset dataRepetiçãoOffset = new DateTimeOffset(new DateOnly(dataAtual.Year, dataAtual.Month, dataAtual.Day), new TimeOnly(s.TimeOfDay.Ticks), s.TimeZone.BaseUtcOffset);                                                        
 
                             if (dif == 0 && currentDate >= dataRepetiçãoOffset)
@@ -635,7 +728,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             }
         }
 
-        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, ulong ID, bool ManagedCallback = true)
+        public static ScheduledCallback FromTemplate(Delegate callback, object[] parameters, ulong ID, bool ManagedCallback = true, bool AllowLateRepeat = false)
         {
             ScheduledCallback c = new();
 
@@ -643,6 +736,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
             c.ManageID = ManagedCallback;
             c.Parameters = parameters;
             c.MethodInfo = callback.Method;
+            c.AllowLateRepeat = AllowLateRepeat;
 
             SchedulableModule ownerModule = new();
             ownerModule.ModuleType = callback.Method.DeclaringType;
