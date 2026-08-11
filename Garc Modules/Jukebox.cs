@@ -1,19 +1,24 @@
 ﻿using DiscordGarçom.Containers.Core;
 using DiscordGarçom.Containers.Core.Modules;
 using DSharpPlus;
+using DSharpPlus.Clients;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using Lavalink4NET;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
@@ -23,14 +28,10 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     public override string Name => "Jukebox";
     protected override bool ThrowExceptionOnMissingConfig => true;
 
+    IAudioService audioService;
+
     protected override JukeboxConfig InitializeConfig() => new();
     protected override JukeboxData InitializeData() => new();
-
-    IAudioService audioService;    
-    LavalinkTrack currentTrack = null;
-    List<LavalinkTrack> TrackQueue = new();
-    List<LavalinkTrack> RecentTracks = new();
-
 
     public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
 
@@ -77,6 +78,12 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             string baseAdressPrefix = config.LavalinkSecure ? "https" : "http";            
             c.BaseAddress = new Uri($"{baseAdressPrefix}://{config.LavalinkIP}:{config.LavalinkPort}");
             c.Passphrase = config.LavalinkKeyword;                   
+        });
+
+        services.AddLogging(configure =>
+        {
+            configure.AddConsole();
+            configure.SetMinimumLevel(LogLevel.Debug);            
         });
 
         return;
@@ -127,7 +134,6 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         await player.PlayAsync(track);      
         return (true, null);
     }
-
 
     [Command("Play")]
     [Description("Toca uma música na jukebox")]
