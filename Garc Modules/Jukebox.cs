@@ -8,9 +8,11 @@ using DSharpPlus.Entities;
 using Lavalink4NET;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
@@ -73,18 +75,26 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
         services.ConfigureLavalink(c =>
         {
-            c.BaseAddress = new Uri($"{config.LavalinkIP}:{config.LavalinkPort}");
-            c.Passphrase = config.LavalinkKeyword;
-        });        
-        
+            string baseAdressPrefix = config.LavalinkSecure ? "https" : "http";            
+            c.BaseAddress = new Uri($"{baseAdressPrefix}://{config.LavalinkIP}:{config.LavalinkPort}");
+            c.Passphrase = config.LavalinkKeyword;                   
+        });
+
+        services.AddLogging(configure =>
+        {
+            configure.AddConsole();
+            configure.SetMinimumLevel(LogLevel.Debug);            
+        });
+
         return;
     }
 
-    public override Task PreStart_0()
+    public override async Task PreStart_0()
     {
         audioService = services.GetService<IAudioService>();
         ArgumentNullException.ThrowIfNull(audioService);
-        return Task.CompletedTask;
+
+        await audioService.StartAsync();
     }
 
     public override Task Start() => Task.CompletedTask;    
@@ -97,9 +107,9 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         LavalinkPlayerOptions lavalinkPlayerOptions = new()
         {
             SelfDeaf = true,
-            SelfMute = false            
-        };        
-
+            SelfMute = false,
+        };
+        
         var result = await audioService.Players.RetrieveAsync(serverContext.BindedDiscordServer.Id, channelId, PlayerFactory.Default, Options.Create(lavalinkPlayerOptions), playerRetrieveOptions);
         return result;
     }    
@@ -132,7 +142,20 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         try
         {
             await ctx.DeferResponseAsync();
-            var result = await PlayMusic(query, ctx.Channel.Id);
+
+            DiscordChannel vcUser;
+
+            if (ctx.Member.VoiceState != null && ctx.Member.VoiceState.ChannelId != null)
+            {
+                vcUser = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
+            }
+            else
+            {
+                await ctx.RespondAsync("Você deve estar em um canal de voz para usar esse comando");
+                return;
+            }
+
+            var result = await PlayMusic(query, vcUser.Id);
 
             if (!result.sucess)
             {
@@ -158,6 +181,7 @@ public class JukeboxConfig
     public string LavalinkIP { get; set; } = "https://localhost";
     public uint LavalinkPort { get; set; } = 2333;
     public string LavalinkKeyword { get; set; } = "youshallnotpass";
+    public bool LavalinkSecure { get; set; } = true;
 }
 
 public class JukeboxData

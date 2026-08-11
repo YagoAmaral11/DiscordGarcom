@@ -61,7 +61,7 @@ public interface IModule
     {
         DateTimeOffset time = DateTimeOffset.Now;
         Console.WriteLine(LogName + $" Error at time {time.ToString()}: " + e);
-        string filename = $"{time.Date.Year}-{time.Date.Month}-{time.Date.Day}_{time.Hour}-{time.Minute}-{time.Second}-{time.Millisecond}UTC{time.Offset.ToString().Replace(':', '-')}";
+        string filename = $"{time.Date.Year}.{time.Date.Month}.{time.Date.Day}_{time.Hour}.{time.Minute}.{time.Second}.{time.Millisecond}_UTC{time.Offset.ToString().Replace(':', '-')}";
 
         try
         {
