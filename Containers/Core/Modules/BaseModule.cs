@@ -1,5 +1,8 @@
 ﻿using DSharpPlus;
+using DSharpPlus.Commands;
+using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Commands.Trees;
+using DSharpPlus.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
@@ -39,6 +42,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     public virtual Task PreStart_0() => Task.CompletedTask;
     public virtual Task PreStart_1() => Task.CompletedTask;
     public virtual Task PreStart_2() => Task.CompletedTask;
+
 
     public virtual async Task<bool> Initialize(IServerContext serverContext)
     {
@@ -100,6 +104,48 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     {
         Config loadedConfig = (Config) await configPersistance.LoadConfig(this, typeof(Config));
         config = loadedConfig;
+    }
+
+
+    // Util Methods    
+
+    /// <summary>
+    /// Responde a comando com uma mensagem de erro; Caso a mensagem tenha sido enviada por um Slash Command, a resposta é vista somente pelo usuário que mandou o comando
+    /// OBS: Não pode se usar o DeferMessage antes para isso funcionar corretamente.
+    /// </summary>
+    /// <param name="ctx">O CommandContext do comando</param>
+    /// <param name="response">A resposta para enviar</param>
+    /// <returns></returns>
+    public static async Task CommandErrorResponse(CommandContext ctx, string response)
+    {
+        if (ctx is SlashCommandContext slashCtx)
+        {
+            var responseBuilder = new DiscordFollowupMessageBuilder();
+            responseBuilder.WithContent(response).AsEphemeral();
+            await slashCtx.FollowupAsync(responseBuilder);
+        }
+        else
+        {
+            await ctx.RespondAsync(response);
+        }
+    }
+
+    /// <summary>
+    /// Verifica se o usuário do comando está conectado em alguma call do servidor
+    /// </summary>
+    /// <param name="ctx">O CommandContext do comando</param>
+    /// <param name="discordChannel">O canal para comparar se o usuário está conectado</param>
+    /// <param name="response">A resposta de erro caso o usuário não esteja conectado</param>
+    /// <returns>Retorna true se o usuário estiver conectado em algum canal do server, retorna false caso contrário</returns>
+    public async Task<bool> CommandVerifyMemberVoiceState(CommandContext ctx, string response = "Você deve estar conectado em um canal de voz para usar esse comando")
+    {       
+        if (ctx.Member.VoiceState.GuildId == null || ctx.Member.VoiceState.GuildId != serverContext.BindedDiscordServer.Id || ctx.Member.VoiceState.ChannelId == null)
+        {
+            await CommandErrorResponse(ctx, response);
+            return false;
+        }
+
+        return true;
     }
 
 
