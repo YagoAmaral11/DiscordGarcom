@@ -118,16 +118,23 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     /// <returns></returns>
     public static async Task CommandErrorResponse(CommandContext ctx, string response)
     {
-        if (ctx is SlashCommandContext slashCtx)
+        try
         {
-            var responseBuilder = new DiscordFollowupMessageBuilder();
-            responseBuilder.WithContent(response).AsEphemeral();
-            await slashCtx.FollowupAsync(responseBuilder);
+            if (ctx is SlashCommandContext slashCtx)
+            {
+                var responseBuilder = new DiscordFollowupMessageBuilder();
+                responseBuilder.WithContent(response).AsEphemeral();
+                await slashCtx.FollowupAsync(responseBuilder);
+            }
+            else
+            {
+                await ctx.RespondAsync(response);
+            }
         }
-        else
+        catch (Exception e)
         {
-            await ctx.RespondAsync(response);
-        }
+            Console.WriteLine(e);
+        }        
     }
 
     /// <summary>
@@ -139,7 +146,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     /// <returns>Retorna true se o usuário estiver conectado em algum canal do server, retorna false caso contrário</returns>
     public async Task<bool> CommandVerifyMemberVoiceState(CommandContext ctx, string response = "Você deve estar conectado em um canal de voz para usar esse comando")
     {       
-        if (ctx.Member.VoiceState.GuildId == null || ctx.Member.VoiceState.GuildId != serverContext.BindedDiscordServer.Id || ctx.Member.VoiceState.ChannelId == null)
+        if (ctx.Member.VoiceState == null || ctx.Member.VoiceState.GuildId == null || ctx.Member.VoiceState.GuildId != serverContext.BindedDiscordServer.Id || ctx.Member.VoiceState.ChannelId == null)
         {
             await CommandErrorResponse(ctx, response);
             return false;

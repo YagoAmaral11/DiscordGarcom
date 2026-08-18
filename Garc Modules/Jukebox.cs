@@ -3,17 +3,23 @@ using DiscordGarçom.Containers.Core.Modules;
 using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
+using DSharpPlus.Entities;
 using Lavalink4NET;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Protocol.Payloads.Events;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
@@ -28,9 +34,23 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
     IAudioService audioService;
     List<TrackSearchMode> searchModes = [];
+    JukeboxPlayer currentServerPlayer;
     
-    List<LavalinkTrack> TrackQueue = new();
-    List<LavalinkTrack> RecentTracks = new();
+
+    private static readonly Dictionary<string, TrackSearchMode> stringToTrackSearchModeDict =
+        new(StringComparer.OrdinalIgnoreCase) // Ignora maiúsculas e minúsculas nativamente
+        {
+            { "youtube", TrackSearchMode.YouTube },
+            { "youtubemusic", TrackSearchMode.YouTubeMusic },
+            { "soundcloud", TrackSearchMode.SoundCloud },
+            { "spotify", TrackSearchMode.Spotify },
+            { "deezer", TrackSearchMode.Deezer },
+            { "applemusic", TrackSearchMode.AppleMusic },
+            { "bandcamp", TrackSearchMode.Bandcamp },
+            { "yandexmusic", TrackSearchMode.YandexMusic }            
+            // Se o seu Lavalink tiver outros plugins instalados (AppleMusic, Yandex, etc), adicione aqui
+        };
+
 
     public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;
 
@@ -69,6 +89,13 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 Console.ResetColor();
             }
         }
+        
+        services.AddLogging(logging =>
+        {
+            logging.AddConsole(); // Garante que vai para o console
+            logging.SetMinimumLevel(LogLevel.Trace); // Permite logs detalhados
+            logging.AddFilter("DSharpPlus.Net.Gateway.ITransportService", LogLevel.Trace);
+        });        
 
         services.AddLavalink();
 
@@ -88,17 +115,25 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         ArgumentNullException.ThrowIfNull(audioService);
 
         await audioService.StartAsync();
+        
+        ConfigureLavalinkSearchSources();
+
+    }
+
+    public override Task Start() => Task.CompletedTask;
 
 
+    private void ConfigureLavalinkSearchSources()
+    {
         foreach (var str in config.LavalinkSearchSources)
         {
             string cleanStr = str.Trim().Replace(" ", "").Replace("-", "");
 
-            if (Enum.TryParse<TrackSearchMode>(cleanStr, true, out var result))
+            if (stringToTrackSearchModeDict.TryGetValue(cleanStr, out var mode))
             {
-                if (!searchModes.Contains(result))
-                    searchModes.Add(result);
-            }            
+                if (!searchModes.Contains(mode))
+                    searchModes.Add(mode);
+            }
         }
 
         if (searchModes.Count == 0)
@@ -107,28 +142,35 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    public override Task Start() => Task.CompletedTask;
-
-
-
-    private async Task<PlayerResult<LavalinkPlayer>> Internal_GetLavaPlayer(ulong channelId, bool joinVoiceChannel = true)
+    private async Task<PlayerResult<JukeboxPlayer>> Internal_GetLavaPlayer(ulong VoiceChannelID, DiscordChannel TextChannel, bool joinVoiceChannel = true)
     {
         PlayerChannelBehavior channelBehavior = joinVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
         PlayerRetrieveOptions playerRetrieveOptions = new(ChannelBehavior: channelBehavior);
-        LavalinkPlayerOptions lavalinkPlayerOptions = new()
+
+        JukeboxPlayerConfig jukeboxPlayerOptions = new()
         {
+            BindedTextChannel = TextChannel,
             SelfDeaf = true,
             SelfMute = false,
         };
 
-        var result = await audioService.Players.RetrieveAsync(serverContext.BindedDiscordServer.Id, channelId, PlayerFactory.Default, Options.Create(lavalinkPlayerOptions), playerRetrieveOptions);
+        LavalinkPlayerOptions lavalinkPlayerOptions = new()
+        {            
+            SelfDeaf = true,
+            SelfMute = false,
+        };
+
+        var serverID = serverContext.BindedDiscordServer.Id;
+        var options = Options.Create(jukeboxPlayerOptions);                
+        // var result = audioService.Players.RetrieveAsync(serverID, VoiceChannelID, PlayerFactory.Default, Options.Create(lavalinkPlayerOptions), playerRetrieveOptions);
+        var result = await audioService.Players.RetrieveAsync<JukeboxPlayer, JukeboxPlayerConfig>(serverID, VoiceChannelID, JukeboxPlayer.CreatePlayerAsync, options, playerRetrieveOptions);        
         return result;
     }
 
     // Serve para pegar o player do lavalink; Returna true se o player estiver no mesmo canal
-    private async Task<(bool sucess, LavalinkPlayer player)> GetLavaPlayer(ulong channelID)
+    private async Task<(bool sucess, JukeboxPlayer player)> GetLavaPlayer(ulong channelID, DiscordChannel TextChannel)
     {
-        var result = await Internal_GetLavaPlayer(channelID, true);
+        var result = await Internal_GetLavaPlayer(channelID, TextChannel, false);
 
         if (!result.IsSuccess)        
             return (false, null);
@@ -146,8 +188,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     // retorna True se verdadeiro, retorna falso e responde com followup nos casos de erro
     private async Task<bool> VerifyMemberChannel(CommandContext ctx)
     {
-        ulong channelCommandSentID = ctx.Channel.Id;
-        ulong? memberVcID = ctx.Member.VoiceState.ChannelId;
+        ulong channelCommandSentID = ctx.Channel.Id;        
 
         if (config.WhitelistEnable && config.WhitelistChannel != channelCommandSentID)
         {
@@ -164,14 +205,14 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
     // Faz as verificações de segurança iniciais da Jukebox (se o usuário está em um canal/canal da jukebox) e retorna o player se 
     // tudo der certo. Responde com feedback em caso de erros.
-    private async Task<LavalinkPlayer> JukeboxInitialChecks(CommandContext ctx)
+    private async Task<JukeboxPlayer> JukeboxInitialChecks(CommandContext ctx)
     {
         if (await VerifyMemberChannel(ctx) == false)
             return null;
 
         ulong memberVC = ctx.Member.VoiceState.ChannelId.Value;
 
-        var (sucess, player) = await GetLavaPlayer(memberVC);
+        var (sucess, player) = await GetLavaPlayer(memberVC, ctx.Channel);
 
         if (!sucess)
         {
@@ -187,15 +228,15 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             return null;
         }
         else
-        {
+        {            
             return player;
         }
     }
 
     // Buscar músicas do lavalink, retornado uma música só ou uma playlist     
-    private async Task<(List<LavalinkTrack>, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult)> JukeboxSearchTracks(string query, bool returnSearch = false)
+    private async Task<(List<LavalinkTrack>, bool sucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult)> JukeboxSearchTracks(string query, bool returnSearch = false)
     {
-        TrackLoadResult trackLoadResult;
+        TrackLoadResult trackLoadResult = new();
 
         if (Uri.TryCreate(query, UriKind.Absolute, out var uriResult) && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
         {
@@ -205,6 +246,8 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         else
         {
             // Buscar com fallback
+            bool found = false;
+
             foreach (var searchMode in searchModes)
             {
                 var options = new TrackLoadOptions
@@ -216,33 +259,37 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
                 if (result.IsSuccess)
                 {
-                    trackLoadResult = result;
+                    trackLoadResult = result;              
+                    found = true;
                     break;
                 }
             }
 
             // Não conseguiu encontrar nada em nenhum modo de busca
-            return ([], false, returnSearch, new TrackLoadResult());
+            if (!found)
+            {
+                return ([], false, false, returnSearch, TrackLoadResult.CreateEmpty());
+            }            
         }                
 
         if (trackLoadResult.Playlist is not null)
         {
-            return (new List<LavalinkTrack>(trackLoadResult.Tracks), true, false, trackLoadResult);
+            return (new List<LavalinkTrack>(trackLoadResult.Tracks), true, true, false, trackLoadResult);
         }
         else if (trackLoadResult.Tracks.Length > 1)
         {
             if (returnSearch)
             {
-                return (new List<LavalinkTrack>(trackLoadResult.Tracks), false, true, trackLoadResult);
+                return (new List<LavalinkTrack>(trackLoadResult.Tracks), true, false, true, trackLoadResult);
             }
             else
             {
-                return ([trackLoadResult.Tracks.FirstOrDefault()], false, false, trackLoadResult);
+                return ([trackLoadResult.Tracks.FirstOrDefault()], true, false, false, trackLoadResult);
             }
         }
         else
         {
-            return ([trackLoadResult.Track], false, false, trackLoadResult);
+            return ([trackLoadResult.Track], true, false, false, trackLoadResult);
         }
     }
 
@@ -268,18 +315,39 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             if (player == null)
                 return;
 
+            // Buscar música/playlist de música
+            await ctx.DeferResponseAsync();
+            (List<LavalinkTrack> tracks, bool isSucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult) = await JukeboxSearchTracks(query);
+            LavalinkTrack firstTrack = null;                        
+
+            if (isSucess)
+            {
+                firstTrack = tracks.FirstOrDefault();
+
+                if (isPlaylist | isSearch)
+                {
+                    tracks.RemoveAt(0);
+                }
+            }            
+
             if (!JukeboxHaveTrack(player))
-            {                                                
-                // Buscar música/playlist de música
-                await player.PlayAsync(currentTrack); // Tocar imediatamente
-                // Enviar mensagem que a música está tocando
+            {
+                // Tocar imediatamente
+                await player.PlayAsync(firstTrack); 
+                // TODO: Enviar mensagem que a música está tocando
                 // TODO: Atualizar "player" do discord (Um embed que mostra momento da música, com opções pra pular, pausar, tocar, etc.)
             }
             else
             {
-                // Buscar música/playlist de música
-                // Colocar na fila de músicas
-                // Enviar mensagem que a música foi adicionada na fila
+                player.TrackQueue.Add(firstTrack);
+                // TODO: Enviar mensagem que a música foi adicionada na fila
+            }
+
+            if (isPlaylist)
+            {
+                // Buscar outras músicas da playlist
+                player.TrackQueue.AddRange(tracks);
+                // TODO: Enviar mensagem que as músicas foi adicionada na fila
             }
         }
         catch (Exception e)
@@ -290,9 +358,59 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
 }
 
+
+public class JukeboxPlayer : LavalinkPlayer
+{
+    List<LavalinkTrack> trackQueue = new(); public List<LavalinkTrack> TrackQueue => trackQueue;
+    List<LavalinkTrack> recentTracks = new(); public List<LavalinkTrack> RecentTracks => recentTracks;
+    public DiscordChannel bindedTextChannel;
+
+    public JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties) : base(properties)
+    {
+        bindedTextChannel = properties.Options.Value.BindedTextChannel;
+    }
+
+    public static ValueTask<JukeboxPlayer> CreatePlayerAsync(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(properties);
+
+        return ValueTask.FromResult(new JukeboxPlayer(properties));
+    }
+
+    protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackStartedAsync(track, cancellationToken);
+
+        // TODO: Falar que está tocando agora a seguinte música
+    }
+
+    protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem track, TrackEndReason endReason, CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackEndedAsync(track, endReason, cancellationToken);
+
+        if (trackQueue.Count > 0)
+        {
+            var nextTrack = trackQueue[0];
+            trackQueue.RemoveAt(0);
+            await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);            
+        }
+        else
+        {
+            await bindedTextChannel.SendMessageAsync("A fila da jukebox está vazia!");            
+        }        
+    }
+
+}
+
+public record JukeboxPlayerConfig : LavalinkPlayerOptions
+{
+    public DiscordChannel BindedTextChannel { get; set; }
+}
+
 public class JukeboxConfig
 {
-    public string LavalinkIP { get; set; } = "https://localhost";
+    public string LavalinkIP { get; set; } = "localhost";
     public uint LavalinkPort { get; set; } = 2333;
     public string LavalinkKeyword { get; set; } = "youshallnotpass";
     public bool LavalinkSecure { get; set; } = true;
