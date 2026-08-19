@@ -170,7 +170,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     // Serve para pegar o player do lavalink; Returna true se o player estiver no mesmo canal
     private async Task<(bool sucess, JukeboxPlayer player)> GetLavaPlayer(ulong channelID, DiscordChannel TextChannel)
     {
-        var result = await Internal_GetLavaPlayer(channelID, TextChannel, false);
+        var result = await Internal_GetLavaPlayer(channelID, TextChannel, true);
 
         if (!result.IsSuccess)        
             return (false, null);
