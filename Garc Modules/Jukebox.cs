@@ -5,6 +5,7 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using Lavalink4NET;
+using Lavalink4NET.Clients;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.Integrations.Lavasrc;
 using Lavalink4NET.Players;
@@ -110,8 +111,8 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         {
             string baseAdressPrefix = config.LavalinkSecure ? "https" : "http";
             c.BaseAddress = new Uri($"{baseAdressPrefix}://{config.LavalinkIP}:{config.LavalinkPort}");
-            c.Passphrase = config.LavalinkKeyword;
-        });
+            c.Passphrase = config.LavalinkKeyword;            
+        });        
 
         return;
     }
@@ -157,6 +158,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         JukeboxPlayerConfig jukeboxPlayerOptions = new()
         {
             Config = config,
+            BindedModule = this,
             BindedTextChannel = TextChannel,
             SelfDeaf = true,
             SelfMute = false,
@@ -385,7 +387,9 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     private static bool JukeboxIsPaused(LavalinkPlayer player) => player.State == PlayerState.Paused;
     private static LavalinkTrack JukeboxCurrentTrack(LavalinkPlayer player) => player.CurrentTrack;
     public static string PrintTimeSpan(TimeSpan timeSpan)
-    {
+    {        
+        timeSpan.Subtract(TimeSpan.FromMilliseconds(timeSpan.Milliseconds)); // Tira os ms para exibir apenas horas, minutos e segundos
+
         if (timeSpan.Days > 0)
         {
             return timeSpan.ToString(@"dd\dhh\:mm\:ss");
@@ -414,6 +418,31 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
         return true;
     }
+
+    public async Task CallTrackException(ITrackQueueItem track, TrackException exception)
+    {
+        try
+        {
+            await ((IModule) this).DumpException(new Exception($"Track Exception in {track.Track.Title} ({track.Identifier}): {exception.Message}, {exception.Cause}"), persistance);
+        }
+        catch
+        {
+            await ((IModule) this).DumpException(new Exception("Error trying to create Track Exception"), persistance);
+        }
+    }
+
+    public async Task CallTrackStuck(ITrackQueueItem track, TimeSpan threshold)
+    {
+        try
+        {
+            await ((IModule) this).DumpException(new Exception($"Track Stuck in {track.Track.Title} ({track.Identifier}) at: {PrintTimeSpan(threshold)}"), persistance);
+        }
+        catch
+        {
+            await ((IModule) this).DumpException(new Exception("Error trying to create Track Stuck Exception"), persistance);
+        }
+    }
+
 
     // COMANDOS DA JUKEBOX
     // ADIÇÃO DE MÚSICAS
@@ -602,7 +631,6 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-
     // GERENCIAMENTO DE PLAYER
 
     [Command("Join")]
@@ -645,6 +673,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 return;
 
             await player.DisconnectAsync();
+            await player.DisposeAsync();
             await ctx.RespondAsync("Jukebox desconectada");
         }
         catch (Exception e)
@@ -1094,10 +1123,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
 public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties) : LavalinkPlayer(properties)
 {
-    List<LavalinkTrack> trackQueue = new(); 
-    List<LavalinkTrack> recentTracks = new();
+    private List<LavalinkTrack> trackQueue = new();
+    private List<LavalinkTrack> recentTracks = new();
     private JukeboxConfig config = properties.Options.Value.Config;
     public DiscordChannel bindedTextChannel = properties.Options.Value.BindedTextChannel;
+    private Jukebox bindedModule = properties.Options.Value.BindedModule;
 
     public bool JukeboxHaveTrack => State == PlayerState.Playing || State == PlayerState.Paused;
     public bool JukeboxIsPaused => State == PlayerState.Paused;
@@ -1113,7 +1143,6 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
 
         return ValueTask.FromResult(new JukeboxPlayer(properties));
     }
-
     
 
     public async Task AddTracksAndPlay(IEnumerable<LavalinkTrack> tracks)
@@ -1153,10 +1182,17 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
 
     public async Task SkipTrack()
     {
+        if (trackQueue.Count <= 0)
+        {
+            await StopAsync();
+            return;
+        }
+
         var nextTrack = trackQueue[0];
         trackQueue.RemoveAt(0);
         await PlayAsync(nextTrack);
     }    
+
 
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
@@ -1171,15 +1207,17 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
 
         if (endReason == TrackEndReason.LoadFailed)
         {
-            await bindedTextChannel.SendMessageAsync("Erro ao tentar carregar: " + track.Track.Title + $" ({track.Track.Uri.ToString()})");
+            await bindedTextChannel.SendMessageAsync("Erro ao tentar carregar: " + track.Track.Title + $" ({track.Track.Uri.Host})");
         }        
 
         if (trackQueue.Count > 0)
         {
             // funcionamento da fila
+            recentTracks.Add(track.Track);
+
             var nextTrack = trackQueue[0];
             trackQueue.RemoveAt(0);
-            await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);
+            await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);            
 
             // mensagem do "Tocando Agora":
             DiscordContainerComponent container = new([await Jukebox.JukeboxTrackSection(nextTrack, "Tocando Agora", this)], color: new DiscordColor(config.JukeboxEmbedColorHex));
@@ -1193,13 +1231,35 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
             await bindedTextChannel.SendMessageAsync("A fila da jukebox está vazia!");            
         }        
     }
-    
+
+    protected override async ValueTask NotifyTrackExceptionAsync(ITrackQueueItem track, TrackException exception, CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackExceptionAsync(track, exception, cancellationToken);
+        await bindedTextChannel.SendMessageAsync($"Ocorreu um erro na reprodução da música {track.Track.Title}: {exception.Cause}");
+
+        _ = Task.Run(() => bindedModule.CallTrackException(track, exception), CancellationToken.None);        
+    }
+
+    protected override async ValueTask NotifyTrackStuckAsync(ITrackQueueItem track, TimeSpan threshold, CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackStuckAsync(track, threshold, cancellationToken);
+        await bindedTextChannel.SendMessageAsync($"A reprodução da música {track.Track.Title} travou");
+
+        _ = Task.Run(() => bindedModule.CallTrackStuck(track, threshold), CancellationToken.None);
+    }
+
+    protected override ValueTask NotifyVoiceStateUpdatedAsync(VoiceState voiceState, CancellationToken cancellationToken = default)
+    {
+        return base.NotifyVoiceStateUpdatedAsync(voiceState, cancellationToken);        
+    }
+
 }
 
 public record JukeboxPlayerConfig : LavalinkPlayerOptions
 {
     public DiscordChannel BindedTextChannel { get; set; }
     public JukeboxConfig Config { get; set; }
+    public Jukebox BindedModule { get; set; }
 }
 
 public class JukeboxConfig
