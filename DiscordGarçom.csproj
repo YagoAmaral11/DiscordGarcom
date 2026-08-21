@@ -19,6 +19,8 @@
     <PackageReference Include="Lavalink4NET" Version="4.2.2" />
     <PackageReference Include="Lavalink4NET.Abstractions" Version="4.2.2" />
     <PackageReference Include="Lavalink4NET.DSharpPlus.Nightly" Version="4.2.2" />
+    <PackageReference Include="Lavalink4NET.Integrations.Lavasearch" Version="4.2.2" />
+    <PackageReference Include="Lavalink4NET.Integrations.Lavasrc" Version="4.2.2" />
     <PackageReference Include="Lavalink4NET.Rest" Version="4.2.2" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />

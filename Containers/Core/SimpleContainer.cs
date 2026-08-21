@@ -83,7 +83,7 @@ public class SimpleContainer(IPersistance persistance, IEnumerable<IModule> modu
 
 
         
-        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All);                
+        DiscordClientBuilder dcClientBuilder = DiscordClientBuilder.CreateDefault(Token, DiscordIntents.All | DiscordIntents.GuildVoiceStates);                
         TaskCompletionSource<bool> readyToOperate = new(); // Usada depois para aguardar o término da inicialização                                                           
         VerifyDuplicatedModules();
 

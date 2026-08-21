@@ -6,20 +6,20 @@ using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using Lavalink4NET;
 using Lavalink4NET.Extensions;
+using Lavalink4NET.Integrations.Lavasrc;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
+using Lavalink4NET.Rest.Entities.Server;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Text;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
@@ -33,8 +33,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     protected override JukeboxData InitializeData() => new();
 
     IAudioService audioService;
-    List<TrackSearchMode> searchModes = [];
-    JukeboxPlayer currentServerPlayer;
+    List<TrackSearchMode> searchModes = [];    
     
 
     private static readonly Dictionary<string, TrackSearchMode> stringToTrackSearchModeDict =
@@ -61,8 +60,23 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         jukebox.WithName("Jukebox");
 
         CommandBuilder play = CommandBuilder.From(Play).WithParent(jukebox);
+        var playNow = CommandBuilder.From(PlayNow).WithParent(jukebox);
+        var playNext = CommandBuilder.From(PlayNext).WithParent(jukebox);
+        var join = CommandBuilder.From(Join).WithParent(jukebox);
+        var stop = CommandBuilder.From(Stop).WithParent(jukebox);
+        var skip = CommandBuilder.From(Skip).WithParent(jukebox);
+        var pause = CommandBuilder.From(Pause).WithParent(jukebox);
+        var seek = CommandBuilder.From(Seek).WithParent(jukebox);
+        var jump10 = CommandBuilder.From(Jump10sec).WithParent(jukebox);
+        var jumpless10 = CommandBuilder.From(JumpLess10sec).WithParent(jukebox);
+        var restart = CommandBuilder.From(Restart).WithParent(jukebox);
+        var queue = CommandBuilder.From(Queue).WithParent(jukebox);
+        var queueNext = CommandBuilder.From(QueueNext).WithParent(jukebox);
+        var queueRemove = CommandBuilder.From(QueueRemove).WithParent(jukebox);
+        var queueClear = CommandBuilder.From(QueueClear).WithParent(jukebox);
+        var queueSkipTo = CommandBuilder.From(SkipTo).WithParent(jukebox);
 
-        jukebox.WithSubcommands([play]);
+        jukebox.WithSubcommands([play, playNow, playNext, join, stop, skip, pause, seek, jump10, jumpless10, restart, queue, queueNext, queueRemove, queueClear, queueSkipTo]);
 
         return [jukebox];
     }
@@ -89,13 +103,6 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 Console.ResetColor();
             }
         }
-        
-        services.AddLogging(logging =>
-        {
-            logging.AddConsole(); // Garante que vai para o console
-            logging.SetMinimumLevel(LogLevel.Trace); // Permite logs detalhados
-            logging.AddFilter("DSharpPlus.Net.Gateway.ITransportService", LogLevel.Trace);
-        });        
 
         services.AddLavalink();
 
@@ -149,20 +156,14 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
         JukeboxPlayerConfig jukeboxPlayerOptions = new()
         {
+            Config = config,
             BindedTextChannel = TextChannel,
             SelfDeaf = true,
             SelfMute = false,
-        };
-
-        LavalinkPlayerOptions lavalinkPlayerOptions = new()
-        {            
-            SelfDeaf = true,
-            SelfMute = false,
-        };
+        };        
 
         var serverID = serverContext.BindedDiscordServer.Id;
-        var options = Options.Create(jukeboxPlayerOptions);                
-        // var result = audioService.Players.RetrieveAsync(serverID, VoiceChannelID, PlayerFactory.Default, Options.Create(lavalinkPlayerOptions), playerRetrieveOptions);
+        var options = Options.Create(jukeboxPlayerOptions);                        
         var result = await audioService.Players.RetrieveAsync<JukeboxPlayer, JukeboxPlayerConfig>(serverID, VoiceChannelID, JukeboxPlayer.CreatePlayerAsync, options, playerRetrieveOptions);        
         return result;
     }
@@ -293,20 +294,138 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
+    public async static Task<DiscordSectionComponent> JukeboxTrackSection(LavalinkTrack track, string header, LavalinkPlayer player = null)
+    {
+        LavalinkServerInformation serverInfo = null;
+
+        if (player != null)
+            serverInfo = await player.ApiClient.RetrieveServerInformationAsync();
+
+        string trackName = track.Title;
+        string trackAuthor = track.Author;
+        string? trackAlbum = null;        
+        string trackSource = track.SourceName;
+        string trackTimespan = PrintTimeSpan(track.Duration);
+
+        if (serverInfo != null)
+        {
+            var plugins = serverInfo.Plugins;
+
+            if (plugins.Any(p => p.Name.Equals("lavasrc-plugin", StringComparison.OrdinalIgnoreCase))) 
+            {
+                var extendedInfo = new ExtendedLavalinkTrack(track);                
+
+                if (extendedInfo.Album.HasValue)
+                    trackAlbum = extendedInfo.Album.Value.Name;
+            }
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("## **" + header + "**");
+        sb.AppendLine(trackName + " **(" + trackTimespan + ")**");
+        sb.AppendLine(trackAuthor);
+        if (trackAlbum != null)
+            sb.AppendLine(trackAlbum);
+        sb.AppendLine("De: " + trackSource);
+
+        DiscordSectionComponent section = new(sb.ToString(), new DiscordThumbnailComponent(track.ArtworkUri.ToString()));        
+        return section;
+    }
+
+    public async static Task<DiscordSectionComponent> JukeboxPlaylistQueuedSection(PlaylistInformation playlist, string header, JukeboxConfig config, LavalinkPlayer player = null)
+    {
+        LavalinkServerInformation serverInfo = null;
+
+        if (player != null)
+            serverInfo = await player.ApiClient.RetrieveServerInformationAsync();
+
+        string? artwork = null;
+        string? playlistAuthor = null;
+        int? totalTracks = null;
+        string playlistName = playlist.Name;
+
+        if (serverInfo != null)
+        {
+            var plugins = serverInfo.Plugins;
+
+            if (plugins.Any(p => p.Name.Equals("lavasrc-plugin", StringComparison.OrdinalIgnoreCase)))
+            {
+                var extendedInfo = new ExtendedPlaylistInformation(playlist);
+                artwork = extendedInfo.ArtworkUri.ToString();
+                playlistAuthor = extendedInfo.Author;
+                totalTracks = extendedInfo.TotalTracks;                
+            }
+        }
+
+        artwork ??= config.DefaultFallbackPlaylistImageUrl;
+
+
+        var sb = new StringBuilder();
+        sb.AppendLine("## **" + header + "**");
+
+        if (totalTracks != null)
+            sb.Append(totalTracks + " de ");
+        sb.Append(playlistName);
+
+        if (totalTracks != null)
+            sb.Append(" foram adicionadas");
+        else
+            sb.Append(" foi adicionado");
+
+        sb.Append(" à fila");
+        sb.AppendLine();
+
+        sb.AppendLine(playlistAuthor);        
+
+        DiscordSectionComponent section = new(sb.ToString(), new DiscordThumbnailComponent(artwork));
+        return section;
+    }
 
     private static bool JukeboxHaveTrack(LavalinkPlayer player) => player.State == PlayerState.Playing || player.State == PlayerState.Paused;
     private static bool JukeboxIsPaused(LavalinkPlayer player) => player.State == PlayerState.Paused;
     private static LavalinkTrack JukeboxCurrentTrack(LavalinkPlayer player) => player.CurrentTrack;
+    public static string PrintTimeSpan(TimeSpan timeSpan)
+    {
+        if (timeSpan.Days > 0)
+        {
+            return timeSpan.ToString(@"dd\dhh\:mm\:ss");
+        }
+        else if (timeSpan.Hours > 0)
+        {
+            return timeSpan.ToString(@"hh\:mm\:ss");
+        }
+        else
+        {
+            return timeSpan.ToString(@"mm\:ss");
+        }
+    }
 
+    private static async Task<bool> ChangePlayerTrackTime(JukeboxPlayer player, TimeSpan tempo)
+    {
+        if (player.CurrentTrack == null)
+            return false;
 
+        if (tempo > player.CurrentTrack.Duration)
+        {
+            await player.SkipTrack();
+        }
+        else
+            await player.SeekAsync(tempo);
+
+        return true;
+    }
+
+    // COMANDOS DA JUKEBOX
+    // ADIÇÃO DE MÚSICAS
 
     [Command("Play")]
-    [Description("Toca ou coloca na fila uma música na jukebox")]
+    [Description("Toca ou adiciona na fila uma música")]
     public async Task Play(CommandContext ctx, [Description("Nome, link, etc. da música")] string query)
     {
         if (!serverContext.ReadyForCommands)
         {
             await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
         }            
 
         try
@@ -317,38 +436,652 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
             // Buscar música/playlist de música
             await ctx.DeferResponseAsync();
-            (List<LavalinkTrack> tracks, bool isSucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult) = await JukeboxSearchTracks(query);
-            LavalinkTrack firstTrack = null;                        
+            (List<LavalinkTrack> tracks, bool isSucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult) = await JukeboxSearchTracks(query);            
 
-            if (isSucess)
+            if (!isSucess)
             {
-                firstTrack = tracks.FirstOrDefault();
-
-                if (isPlaylist | isSearch)
-                {
-                    tracks.RemoveAt(0);
-                }
-            }            
-
-            if (!JukeboxHaveTrack(player))
-            {
-                // Tocar imediatamente
-                await player.PlayAsync(firstTrack); 
-                // TODO: Enviar mensagem que a música está tocando
-                // TODO: Atualizar "player" do discord (Um embed que mostra momento da música, com opções pra pular, pausar, tocar, etc.)
+                await CommandErrorResponse(ctx, "Nenhuma música foi encontrada");
+                return;
             }
-            else
+
+            // Adiciona uma ou mais músicas à fila
+            bool hadTrack = player.JukeboxHaveTrack;
+            var uniqueTrack = tracks.First();
+
+            if (isSearch || (!isPlaylist && !isSearch))
             {
-                player.TrackQueue.Add(firstTrack);
-                // TODO: Enviar mensagem que a música foi adicionada na fila
+                await player.AddTrackAndPlay(uniqueTrack);
             }
 
             if (isPlaylist)
             {
-                // Buscar outras músicas da playlist
-                player.TrackQueue.AddRange(tracks);
-                // TODO: Enviar mensagem que as músicas foi adicionada na fila
+                await player.AddTracksAndPlay(tracks);
             }
+
+            // Mensagem de resposta final
+            DiscordContainerComponent container;
+
+            string message;
+            if (!hadTrack)
+                message = "Tocando Agora";
+            else
+                message = "Adicionado à fila";
+
+            if (!isPlaylist)
+                container = new([await JukeboxTrackSection(uniqueTrack, message, player)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+            else
+                container = new([await JukeboxPlaylistQueuedSection(trackLoadResult.Playlist, message, config, player)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+
+            DiscordMessageBuilder builder = new();
+            builder.EnableV2Components();
+            builder.AddContainerComponent(container);
+            await ctx.RespondAsync(builder);
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("PlayNow")]
+    [Description("Toca uma música imediatamente")]
+    public async Task PlayNow(CommandContext ctx, [Description("Nome, link, etc. da música")] string query)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            // Buscar música/playlist de música
+            await ctx.DeferResponseAsync();
+            (List<LavalinkTrack> tracks, bool isSucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult) = await JukeboxSearchTracks(query);
+
+            if (!isSucess)
+            {
+                await CommandErrorResponse(ctx, "Nenhuma música foi encontrada");
+                return;
+            }
+
+            // Toca a música e, caso for playlist, coloca as subsequentes na fila           
+            var uniqueTrack = tracks.First();            
+
+            if (isSearch || (!isPlaylist && !isSearch))
+            {
+                await player.PlayAsync(uniqueTrack);
+            }
+            else if (isPlaylist)
+            {
+                var toAdd = new List<LavalinkTrack>(tracks);
+                toAdd.Remove(uniqueTrack);
+
+                await player.PlayAsync(uniqueTrack);
+                await player.AddTracksAndPlay(tracks);
+            }
+
+            // Mensagem de resposta final
+            DiscordContainerComponent container;
+
+            string message = "Tocando Agora";            
+
+            if (!isPlaylist)
+                container = new([await JukeboxTrackSection(uniqueTrack, message, player)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+            else
+                container = new([await JukeboxPlaylistQueuedSection(trackLoadResult.Playlist, message, config, player)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+
+            DiscordMessageBuilder builder = new();
+            builder.EnableV2Components();
+            builder.AddContainerComponent(container);
+            await ctx.RespondAsync(builder);
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("PlayNext")]
+    [Description("Adiciona uma música no ínício da fila")]
+    public async Task PlayNext(CommandContext ctx, [Description("Nome, link, etc. da música")] string query)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            // Buscar música/playlist de música
+            await ctx.DeferResponseAsync();
+            (List<LavalinkTrack> tracks, bool isSucess, bool isPlaylist, bool isSearch, TrackLoadResult trackLoadResult) = await JukeboxSearchTracks(query);
+
+            if (!isSucess)
+            {
+                await CommandErrorResponse(ctx, "Nenhuma música foi encontrada");
+                return;
+            }
+
+            // Adiciona uma música no início da fila       
+            var uniqueTrack = tracks.First();
+
+            if (isSearch || (!isPlaylist && !isSearch))
+            {
+                player.TrackQueue.Insert(0, uniqueTrack);               
+            }
+            if (isPlaylist)
+            {
+                await CommandErrorResponse(ctx, "Você só pode adicionar uma música na fila com esse comando");
+            }
+
+            // Mensagem de resposta final
+            DiscordContainerComponent container;
+
+            string message = "Adicionado à fila";                                        
+
+            container = new([await JukeboxTrackSection(uniqueTrack, message, player)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+            
+            DiscordMessageBuilder builder = new();
+            builder.EnableV2Components();
+            builder.AddContainerComponent(container);
+            await ctx.RespondAsync(builder);
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+
+    // GERENCIAMENTO DE PLAYER
+
+    [Command("Join")]
+    [Description("Conecta a Jukebox na cal")]
+    public async Task Join(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            // OBS: JukeboxInitialChecks já verifica se o usuário está ou não em uma call ou na mesma call do bot;
+            //      Além disso ela também recupera o player de lavalink e, se ele não estiver conectado, já conecta ele na call
+            //      (que é exatamente o que queremos, por isso esse comando é vazio e apenas chama o JukeboxInitialChecks)
+            var player = await JukeboxInitialChecks(ctx);            
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Stop")]
+    [Description("Desconecta e limpa a fila da jukebox")]
+    public async Task Stop(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            await player.DisconnectAsync();
+            await ctx.RespondAsync("Jukebox desconectada");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Skip")]
+    [Description("Pula a música atual e toca a próxima da fila")]
+    public async Task Skip(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            await player.SkipTrack();
+            await ctx.RespondAsync("Pulando música");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Pause")]
+    [Description("Pausa ou despausa a reprodução da música atual")]
+    public async Task Pause(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            if (player.IsPaused)
+            {
+                await player.ResumeAsync();
+                await ctx.RespondAsync("Reprodução despausada");
+            }
+            else
+            {
+                await player.PauseAsync();
+                await ctx.RespondAsync("Reprodução pausada");
+            }
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Seek")]
+    [Description("Coloca a música atual em um tempo específico")]
+    public async Task Seek(CommandContext ctx, [Description("Suporta formatos como: XX:YY:ZZ ou XXhYYmZZs")] TimeSpan tempo, [Description("Usa o momento atual da música se verdadeiro")] bool useRelative = false)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            if (useRelative)
+            {
+                if (player.CurrentTrack == null)
+                {
+                    await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                    return;
+                }                    
+
+                tempo = player.Position.Value.Position + tempo;
+            }
+
+            var result = await ChangePlayerTrackTime(player, tempo);
+
+            if (!result)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }                
+
+            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("10")]
+    [Description("Pula 10 segundos da música atual")]
+    public async Task Jump10sec(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+
+            if (player.CurrentTrack == null)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }
+
+            var tempo = player.Position.Value.Position + TimeSpan.FromSeconds(10);
+            var result = await ChangePlayerTrackTime(player, tempo);
+
+            if (!result)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }
+
+            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("-10")]
+    [Description("Retrocede 10 segundos da música atual")]
+    public async Task JumpLess10sec(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+
+            if (player.CurrentTrack == null)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }
+
+            var tempo = player.Position.Value.Position - TimeSpan.FromSeconds(10);
+            var zero = TimeSpan.FromSeconds(0);
+
+            if (tempo < zero)
+            {
+                tempo = zero;
+            }
+
+            var result = await ChangePlayerTrackTime(player, tempo);
+
+            if (!result)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }
+
+            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Restart")]
+    [Description("Reinicia a música atual")]
+    public async Task Restart(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            if (player.CurrentTrack == null)
+            {
+                await CommandErrorResponse(ctx, "Não há música na Jukebox");
+                return;
+            }
+
+            await player.SeekAsync(TimeSpan.FromSeconds(0));
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    // GERENCIAMENTO DE FILA
+
+    [Command("Queue")]
+    [Description("Mostra a fila de músicas")]
+    // TODO: Criar uma nova versão padrão da Jukebox que faz com que a lista seja feita de embeds com as thumbs da música,
+    // com as próximas músicas e qual a música atual que está tocando
+    // [Description("Se deve mostrar a versão simplificada ou não")] bool simplificar = false
+    public async Task Queue(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            bool simplificar = true;
+
+            if (simplificar)
+            {
+                DiscordEmbedBuilder embed = new();
+                embed.Title = "Fila da Jukebox";
+                embed.Color = new DiscordColor(config.JukeboxEmbedColorHex);
+
+                if (player.RecentTracks.Any())
+                {
+                    string filaRecente = "";
+
+                    int index = 0;
+                    foreach (var song in player.RecentTracks)
+                    {
+                        filaRecente += $"**{index - player.RecentTracks.Count - 1}:** {song.Title} ({PrintTimeSpan(song.Duration)})\n";
+                        index++;
+                    }
+
+                    embed.AddField("Músicas Anteriores", filaRecente);
+                }
+
+                if (player.CurrentTrack != null)
+                {
+                    embed.AddField("Música Atual", player.CurrentTrack.Title + $" **({player.Position.Value.Position})**");
+                }
+
+                if (player.TrackQueue.Any())
+                {
+                    string fila = "";
+
+                    int index = 0;
+                    foreach (var song in player.TrackQueue)
+                    {
+                        fila += $"**{index}:** {song.Title} ({PrintTimeSpan(song.Duration)})\n";
+                        index++;
+                    }
+
+                    embed.AddField("Próximas Músicas", fila);
+                }
+
+                var finalEmbed = embed.Build();
+                await ctx.RespondAsync(finalEmbed);
+            }
+            else
+            {
+            }
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("QueueNext")]
+    [Description("Coloca uma música da fila no início")]
+    public async Task QueueNext(CommandContext ctx, [Description("Índice da música para ser a próxima a tocar")] int id, 
+        [Description("Se a música atual desse ser pulada")] bool pular = false)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            if (id < 0 || id > player.TrackQueue.Count)
+            {
+                await ctx.RespondAsync("Uma música com esse índice não existe na fila. Tente usar o comando de fila para verificar.");
+                return;
+            }
+
+            await player.PauseAsync();
+
+            LavalinkTrack track = player.TrackQueue[id];
+            List<LavalinkTrack> copy = new(player.TrackQueue);
+
+            copy.Remove(track);
+
+            player.TrackQueue.Clear();
+            player.TrackQueue.Add(track);
+            player.TrackQueue.AddRange(copy);
+
+            await player.ResumeAsync();
+            await ctx.RespondAsync($"{track.Title} será a próxima música a ser tocada");
+
+            if (pular)
+            {
+                await player.SkipTrack();
+            }
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }            
+    
+    [Command("Remove")]
+    [Description("Remove uma música de indíce ID da fila de músicas")]
+    public async Task QueueRemove(CommandContext ctx, [Description("Índice da música à retirar")] int id)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+            
+            if (id < 0 || id > player.TrackQueue.Count)
+            {
+                await ctx.RespondAsync("Uma música com esse índice não existe na fila. Tente usar o comando de fila para verificar.");
+                return;
+            }
+
+            var track = player.TrackQueue[id];
+            player.TrackQueue.Remove(track);
+
+            await ctx.RespondAsync($"{track.Title} foi removida da fila");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Clear")]
+    [Description("Limpa a fila de músicas")]
+    public async Task QueueClear(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            player.TrackQueue.Clear();
+            await ctx.RespondAsync("A fila de músicas foi limpa");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("SkipTo")]
+    [Description("Pula até a música de índice ID da fila")]
+    public async Task SkipTo(CommandContext ctx, [Description("Índice da música para pular")] int id)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            if (id < 0 || id > player.TrackQueue.Count)
+            {
+                await ctx.RespondAsync("Uma música com esse índice não existe na fila. Tente usar o comando de fila para verificar.");
+                return;
+            }
+
+            await player.PauseAsync();
+
+            for (int i = 0; i <= id - 1; i++)
+            {
+                player.TrackQueue.RemoveAt(0);
+            }
+
+            await player.SkipTrack();
         }
         catch (Exception e)
         {
@@ -359,16 +1092,19 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 }
 
 
-public class JukeboxPlayer : LavalinkPlayer
+public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties) : LavalinkPlayer(properties)
 {
-    List<LavalinkTrack> trackQueue = new(); public List<LavalinkTrack> TrackQueue => trackQueue;
-    List<LavalinkTrack> recentTracks = new(); public List<LavalinkTrack> RecentTracks => recentTracks;
-    public DiscordChannel bindedTextChannel;
+    List<LavalinkTrack> trackQueue = new(); 
+    List<LavalinkTrack> recentTracks = new();
+    private JukeboxConfig config = properties.Options.Value.Config;
+    public DiscordChannel bindedTextChannel = properties.Options.Value.BindedTextChannel;
 
-    public JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties) : base(properties)
-    {
-        bindedTextChannel = properties.Options.Value.BindedTextChannel;
-    }
+    public bool JukeboxHaveTrack => State == PlayerState.Playing || State == PlayerState.Paused;
+    public bool JukeboxIsPaused => State == PlayerState.Paused;
+    public LavalinkTrack JukeboxCurrentTrack => CurrentTrack;
+    public List<LavalinkTrack> TrackQueue => trackQueue;
+    public List<LavalinkTrack> RecentTracks => recentTracks;
+
 
     public static ValueTask<JukeboxPlayer> CreatePlayerAsync(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig> properties, CancellationToken cancellationToken = default)
     {
@@ -378,34 +1114,92 @@ public class JukeboxPlayer : LavalinkPlayer
         return ValueTask.FromResult(new JukeboxPlayer(properties));
     }
 
+    
+
+    public async Task AddTracksAndPlay(IEnumerable<LavalinkTrack> tracks)
+    {
+        LavalinkTrack firstTrack;
+
+        if (!tracks.Any())
+            return;
+
+        firstTrack = tracks.First();
+        var tracksList = tracks.ToList();
+        tracksList.RemoveAt(0);
+
+        if (!JukeboxHaveTrack)
+        {
+            await PlayAsync(firstTrack);
+        }
+        else
+        {
+            trackQueue.Add(firstTrack);
+        }
+
+        trackQueue.AddRange(tracksList);
+    }
+
+    public async Task AddTrackAndPlay(LavalinkTrack track)
+    {
+        if (JukeboxHaveTrack)
+        {
+            trackQueue.Add(track);
+        }
+        else
+        {
+            await PlayAsync(track);
+        }
+    }
+
+    public async Task SkipTrack()
+    {
+        var nextTrack = trackQueue[0];
+        trackQueue.RemoveAt(0);
+        await PlayAsync(nextTrack);
+    }    
+
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackStartedAsync(track, cancellationToken);
-
-        // TODO: Falar que está tocando agora a seguinte música
+        
+        // TODO: Atualizar "player" do discord (Um embed que mostra momento da música, com opções pra pular, pausar, tocar, etc.)
     }
 
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem track, TrackEndReason endReason, CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackEndedAsync(track, endReason, cancellationToken);
 
+        if (endReason == TrackEndReason.LoadFailed)
+        {
+            await bindedTextChannel.SendMessageAsync("Erro ao tentar carregar: " + track.Track.Title + $" ({track.Track.Uri.ToString()})");
+        }        
+
         if (trackQueue.Count > 0)
         {
+            // funcionamento da fila
             var nextTrack = trackQueue[0];
             trackQueue.RemoveAt(0);
-            await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);            
+            await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);
+
+            // mensagem do "Tocando Agora":
+            DiscordContainerComponent container = new([await Jukebox.JukeboxTrackSection(nextTrack, "Tocando Agora", this)], color: new DiscordColor(config.JukeboxEmbedColorHex));
+            DiscordMessageBuilder builder = new();
+            builder.EnableV2Components();
+            builder.AddContainerComponent(container);
+            await builder.SendAsync(bindedTextChannel);
         }
         else
         {
             await bindedTextChannel.SendMessageAsync("A fila da jukebox está vazia!");            
         }        
     }
-
+    
 }
 
 public record JukeboxPlayerConfig : LavalinkPlayerOptions
 {
     public DiscordChannel BindedTextChannel { get; set; }
+    public JukeboxConfig Config { get; set; }
 }
 
 public class JukeboxConfig
@@ -417,6 +1211,8 @@ public class JukeboxConfig
     public List<string> LavalinkSearchSources { get; set; } = ["Youtube", "Spotify", "Soundcloud"];
     public bool WhitelistEnable { get; set; } = true;
     public ulong WhitelistChannel { get; set; } = 0;
+    public string DefaultFallbackPlaylistImageUrl { get; set; } = "https://cdn-icons-png.flaticon.com/512/608/608386.png";
+    public string JukeboxEmbedColorHex { get; set; } = "#F55305";
 }
 
 public class JukeboxData
