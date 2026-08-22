@@ -1098,6 +1098,8 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             if (player == null)
                 return;
 
+            await ctx.DeferResponseAsync();
+
             if (id < 0 || id > player.TrackQueue.Count)
             {
                 await ctx.RespondAsync("Uma música com esse índice não existe na fila. Tente usar o comando de fila para verificar.");
