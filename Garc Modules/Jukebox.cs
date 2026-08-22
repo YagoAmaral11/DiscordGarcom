@@ -76,8 +76,10 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         var queueRemove = CommandBuilder.From(QueueRemove).WithParent(jukebox);
         var queueClear = CommandBuilder.From(QueueClear).WithParent(jukebox);
         var queueSkipTo = CommandBuilder.From(SkipTo).WithParent(jukebox);
+        var shuffle = CommandBuilder.From(Shuffle).WithParent(jukebox);
 
-        jukebox.WithSubcommands([play, playNow, playNext, join, stop, skip, pause, seek, jump10, jumpless10, restart, queue, queueNext, queueRemove, queueClear, queueSkipTo]);
+        jukebox.WithSubcommands([play, playNow, playNext, join, stop, skip, pause, seek, jump10, jumpless10
+            , restart, queue, queueNext, queueRemove, queueClear, queueSkipTo, shuffle]);
 
         return [jukebox];
     }
@@ -324,7 +326,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
         var sb = new StringBuilder();
         sb.AppendLine("## **" + header + "**");
-        sb.AppendLine(trackName + " **(" + trackTimespan + ")**");
+        sb.AppendLine(trackName + " ***(" + trackTimespan + ")***");
         sb.AppendLine(trackAuthor);
         if (trackAlbum != null)
             sb.AppendLine(trackAlbum);
@@ -387,9 +389,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     private static bool JukeboxIsPaused(LavalinkPlayer player) => player.State == PlayerState.Paused;
     private static LavalinkTrack JukeboxCurrentTrack(LavalinkPlayer player) => player.CurrentTrack;
     public static string PrintTimeSpan(TimeSpan timeSpan)
-    {        
-        timeSpan.Subtract(TimeSpan.FromMilliseconds(timeSpan.Milliseconds)); // Tira os ms para exibir apenas horas, minutos e segundos
-
+    {                
         if (timeSpan.Days > 0)
         {
             return timeSpan.ToString(@"dd\dhh\:mm\:ss");
@@ -512,7 +512,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("PlayNow")]
+    [Command("Playnow")]
     [Description("Toca uma música imediatamente")]
     public async Task PlayNow(CommandContext ctx, [Description("Nome, link, etc. da música")] string query)
     {
@@ -575,7 +575,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("PlayNext")]
+    [Command("Playnext")]
     [Description("Adiciona uma música no ínício da fila")]
     public async Task PlayNext(CommandContext ctx, [Description("Nome, link, etc. da música")] string query)
     {
@@ -783,7 +783,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("10")]
+    [Command("forward")]
     [Description("Pula 10 segundos da música atual")]
     public async Task Jump10sec(CommandContext ctx)
     {
@@ -823,7 +823,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("-10")]
+    [Command("back")]
     [Description("Retrocede 10 segundos da música atual")]
     public async Task JumpLess10sec(CommandContext ctx)
     {
@@ -893,6 +893,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             }
 
             await player.SeekAsync(TimeSpan.FromSeconds(0));
+            await ctx.RespondAsync($"{player.CurrentTrack.Title} foi recomeçada");
         }
         catch (Exception e)
         {
@@ -936,7 +937,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                     int index = 0;
                     foreach (var song in player.RecentTracks)
                     {
-                        filaRecente += $"**{index - player.RecentTracks.Count - 1}:** {song.Title} ({PrintTimeSpan(song.Duration)})\n";
+                        filaRecente += $"**{index - player.RecentTracks.Count}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
                         index++;
                     }
 
@@ -945,7 +946,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
 
                 if (player.CurrentTrack != null)
                 {
-                    embed.AddField("Música Atual", player.CurrentTrack.Title + $" **({player.Position.Value.Position})**");
+                    embed.AddField("Música Atual", player.CurrentTrack.Title + $" ***({PrintTimeSpan(player.Position.Value.Position)}/{PrintTimeSpan(player.CurrentTrack.Duration)})***");
                 }
 
                 if (player.TrackQueue.Any())
@@ -955,7 +956,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                     int index = 0;
                     foreach (var song in player.TrackQueue)
                     {
-                        fila += $"**{index}:** {song.Title} ({PrintTimeSpan(song.Duration)})\n";
+                        fila += $"**{index}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
                         index++;
                     }
 
@@ -975,7 +976,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("QueueNext")]
+    [Command("Queuenext")]
     [Description("Coloca uma música da fila no início")]
     public async Task QueueNext(CommandContext ctx, [Description("Índice da música para ser a próxima a tocar")] int id, 
         [Description("Se a música atual desse ser pulada")] bool pular = false)
@@ -1081,7 +1082,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
     }
 
-    [Command("SkipTo")]
+    [Command("Skipto")]
     [Description("Pula até a música de índice ID da fila")]
     public async Task SkipTo(CommandContext ctx, [Description("Índice da música para pular")] int id)
     {
@@ -1111,6 +1112,45 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             }
 
             await player.SkipTrack();
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("shuffle")]
+    [Description("Aleatoriza a fila atual de música")]
+    public async Task Shuffle(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {            
+            var player = await JukeboxInitialChecks(ctx);
+
+            await ctx.DeferResponseAsync();
+
+            var initial = new List<LavalinkTrack>(player.TrackQueue);
+            var final = new List<LavalinkTrack>();
+
+            Random rng = new();
+
+            while (initial.Count > 0)
+            {
+                var currentIndex = rng.Next(0, initial.Count);
+                var current = initial[currentIndex];
+                initial.Remove(current);
+                final.Add(current);
+            }
+
+            player.ChangeQueue(final);            
+
+            await ctx.RespondAsync("Fila embaralhada");
         }
         catch (Exception e)
         {
@@ -1181,17 +1221,23 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
     }
 
     public async Task SkipTrack()
-    {
+    {        
         if (trackQueue.Count <= 0)
         {
-            await StopAsync();
-            return;
+            await StopAsync();            
         }
-
-        var nextTrack = trackQueue[0];
-        trackQueue.RemoveAt(0);
-        await PlayAsync(nextTrack);
+        else
+        {
+            var nextTrack = trackQueue[0];
+            trackQueue.RemoveAt(0);
+            await PlayAsync(nextTrack);
+        }            
     }    
+
+    public void ChangeQueue(List<LavalinkTrack> newQueue)
+    {
+        trackQueue = newQueue;
+    }
 
 
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
@@ -1208,13 +1254,19 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
         if (endReason == TrackEndReason.LoadFailed)
         {
             await bindedTextChannel.SendMessageAsync("Erro ao tentar carregar: " + track.Track.Title + $" ({track.Track.Uri.Host})");
+        }
+
+        // funcionamento das músicas recentes
+        recentTracks.Add(track.Track);
+
+        if (endReason == TrackEndReason.Replaced || endReason == TrackEndReason.Cleanup)
+        {            
+            return;
         }        
 
         if (trackQueue.Count > 0)
         {
-            // funcionamento da fila
-            recentTracks.Add(track.Track);
-
+            // funcionamento da fila            
             var nextTrack = trackQueue[0];
             trackQueue.RemoveAt(0);
             await PlayAsync(nextTrack, cancellationToken: CancellationToken.None);            
