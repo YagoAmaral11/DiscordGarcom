@@ -7,6 +7,9 @@ using DSharpPlus.Entities;
 using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Extensions;
+using Lavalink4NET.InactivityTracking.Extensions;
+using Lavalink4NET.InactivityTracking.Trackers.Idle;
+using Lavalink4NET.InactivityTracking.Trackers.Users;
 using Lavalink4NET.Integrations.Lavasrc;
 using Lavalink4NET.Players;
 using Lavalink4NET.Protocol.Payloads.Events;
@@ -77,6 +80,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         var queueClear = CommandBuilder.From(QueueClear).WithParent(jukebox);
         var queueSkipTo = CommandBuilder.From(SkipTo).WithParent(jukebox);
         var shuffle = CommandBuilder.From(Shuffle).WithParent(jukebox);
+        var recentQueue = CommandBuilder.From(RecentQueue).WithParent(jukebox);
 
         jukebox.WithSubcommands([play, playNow, playNext, join, stop, skip, pause, seek, jump10, jumpless10
             , restart, queue, queueNext, queueRemove, queueClear, queueSkipTo, shuffle]);
@@ -108,13 +112,24 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
 
         services.AddLavalink();
+        services.AddInactivityTracking();
 
         services.ConfigureLavalink(c =>
         {
             string baseAdressPrefix = config.LavalinkSecure ? "https" : "http";
             c.BaseAddress = new Uri($"{baseAdressPrefix}://{config.LavalinkIP}:{config.LavalinkPort}");
             c.Passphrase = config.LavalinkKeyword;            
-        });        
+        });
+
+        services.Configure<IdleInactivityTrackerOptions>(c =>
+        {
+            c.Timeout = TimeSpan.FromMinutes(config.JukeboxDisconnectOnInactiveMinutes);
+        });
+
+        services.Configure<UsersInactivityTrackerOptions>(c =>
+        {
+            c.Timeout = TimeSpan.FromMinutes(config.JukeboxDisconnectOnAlone);
+        });
 
         return;
     }
@@ -634,7 +649,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     // GERENCIAMENTO DE PLAYER
 
     [Command("Join")]
-    [Description("Conecta a Jukebox na cal")]
+    [Description("Conecta a Jukebox na call")]
     public async Task Join(CommandContext ctx)
     {
         if (!serverContext.ReadyForCommands)
@@ -908,7 +923,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     // TODO: Criar uma nova versão padrão da Jukebox que faz com que a lista seja feita de embeds com as thumbs da música,
     // com as próximas músicas e qual a música atual que está tocando
     // [Description("Se deve mostrar a versão simplificada ou não")] bool simplificar = false
-    public async Task Queue(CommandContext ctx)
+    public async Task Queue(CommandContext ctx, [Description("A página mostrada")] int pagina = 1)
     {
         if (!serverContext.ReadyForCommands)
         {
@@ -928,40 +943,52 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             {
                 DiscordEmbedBuilder embed = new();
                 embed.Title = "Fila da Jukebox";
-                embed.Color = new DiscordColor(config.JukeboxEmbedColorHex);
+                embed.Color = new DiscordColor(config.JukeboxEmbedColorHex);               
 
-                if (player.RecentTracks.Any())
-                {
-                    string filaRecente = "";
-
-                    int index = 0;
-                    foreach (var song in player.RecentTracks)
-                    {
-                        filaRecente += $"**{index - player.RecentTracks.Count}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
-                        index++;
-                    }
-
-                    embed.AddField("Músicas Anteriores", filaRecente);
-                }
-
+                // Música Atual
                 if (player.CurrentTrack != null)
                 {
                     embed.AddField("Música Atual", player.CurrentTrack.Title + $" ***({PrintTimeSpan(player.Position.Value.Position)}/{PrintTimeSpan(player.CurrentTrack.Duration)})***");
                 }
 
-                if (player.TrackQueue.Any())
-                {
-                    string fila = "";
+                // Fila de músicas
+                string fila = "";
 
-                    int index = 0;
-                    foreach (var song in player.TrackQueue)
+                int qntPaginas = player.TrackQueue.Count / config.JukeboxSimplifiedQueueMessageMaxTracks + 1;
+                int pagAtual = pagina;
+                int indexDaPrimeiraMusicaPag = config.JukeboxSimplifiedQueueMessageMaxTracks * pagAtual - 1;
+                int indexUltimaMscDaFila = player.TrackQueue.Count - 1;
+
+                if (indexUltimaMscDaFila < indexDaPrimeiraMusicaPag)
+                {
+                    await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
+                    return;
+                }
+
+                if (player.TrackQueue.Count == 0)
+                {
+                    fila = "A fila está vazia. Use o comando play para inserir novas músicas";
+                }
+                else
+                {
+                    int indexMusicaFinalPag = indexDaPrimeiraMusicaPag + config.JukeboxSimplifiedQueueMessageMaxTracks;
+
+                    if (indexMusicaFinalPag > indexUltimaMscDaFila)
                     {
+                        indexMusicaFinalPag = indexUltimaMscDaFila;
+                    }
+
+                    for (int index = indexDaPrimeiraMusicaPag; index < indexMusicaFinalPag; index++)
+                    {
+                        var song = player.TrackQueue[index];
                         fila += $"**{index}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
                         index++;
                     }
 
-                    embed.AddField("Próximas Músicas", fila);
+                    fila += $"\n\nExibindo página {pagAtual} de {qntPaginas}";
                 }
+
+                embed.AddField("Próximas Músicas", fila);
 
                 var finalEmbed = embed.Build();
                 await ctx.RespondAsync(finalEmbed);
@@ -969,6 +996,74 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             else
             {
             }
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
+
+    [Command("Recents")]
+    [Description("Mostra as músicas tocadas recentemente")]
+    public async Task RecentQueue(CommandContext ctx, [Description("A página mostrada")] int pagina = 1)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return;
+        }
+
+        try
+        {
+            var player = await JukeboxInitialChecks(ctx);
+            if (player == null)
+                return;
+
+            DiscordEmbedBuilder embed = new();
+            embed.Title = "Músicas Anteriores";
+            embed.Color = new DiscordColor(config.JukeboxEmbedColorHex);
+
+            // Fila Recente
+            string filaRecente = "";
+
+            int qntPaginas = player.RecentTracks.Count / config.JukeboxSimplifiedQueueMessageMaxTracks + 1;
+            int pagAtual = pagina;
+            int indexDaPrimeiraMusicaPag = config.JukeboxSimplifiedQueueMessageMaxTracks * pagAtual - 1;
+            int indexUltimaMscRecente = player.TrackQueue.Count - 1;
+
+            if (indexUltimaMscRecente < indexDaPrimeiraMusicaPag)
+            {
+                await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
+                return;
+            }
+
+            if (player.RecentTracks.Count == 0)
+            {
+                filaRecente = "Não há músicas recentes. Quando uma tocar, ficará guardada aqui";
+            }
+            else
+            {
+                int indexMusicaFinalPag = indexDaPrimeiraMusicaPag + config.JukeboxSimplifiedQueueMessageMaxTracks;
+
+                if (indexMusicaFinalPag > indexUltimaMscRecente)
+                {
+                    indexMusicaFinalPag = indexUltimaMscRecente;
+                }
+
+                for (int index = indexDaPrimeiraMusicaPag; index < indexMusicaFinalPag; index++)
+                {
+                    var song = player.RecentTracks[index];
+                    filaRecente += $"**{index - player.RecentTracks.Count}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
+                    index++;
+                }
+
+                filaRecente = $"\n\nExibindo página {pagAtual} de {qntPaginas}";
+            }
+
+            embed.WithDescription(filaRecente);            
+
+            var finalEmbed = embed.Build();
+            await ctx.RespondAsync(finalEmbed);
         }
         catch (Exception e)
         {
@@ -1305,7 +1400,7 @@ public class JukeboxPlayer(IPlayerProperties<JukeboxPlayer, JukeboxPlayerConfig>
     protected override ValueTask NotifyVoiceStateUpdatedAsync(VoiceState voiceState, CancellationToken cancellationToken = default)
     {
         return base.NotifyVoiceStateUpdatedAsync(voiceState, cancellationToken);        
-    }
+    }    
 
 }
 
@@ -1327,6 +1422,9 @@ public class JukeboxConfig
     public ulong WhitelistChannel { get; set; } = 0;
     public string DefaultFallbackPlaylistImageUrl { get; set; } = "https://cdn-icons-png.flaticon.com/512/608/608386.png";
     public string JukeboxEmbedColorHex { get; set; } = "#F55305";
+    public int JukeboxSimplifiedQueueMessageMaxTracks { get; set; } = 10;
+    public int JukeboxDisconnectOnInactiveMinutes { get; set; } = 10;
+    public int JukeboxDisconnectOnAlone { get; set; } = 5;
 }
 
 public class JukeboxData

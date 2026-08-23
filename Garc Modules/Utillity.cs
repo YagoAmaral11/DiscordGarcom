@@ -5,6 +5,7 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -17,7 +18,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
 {
     public override string Name => "Utility";
 
-    protected override bool ThrowExceptionOnMissingConfig => false;
+    protected override bool ThrowExceptionOnMissingConfig => true;
 
     public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
 
@@ -182,13 +183,53 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
             await ((IModule) this).DumpException(e, persistance);
         }
     }
+    
+    [Command("shake")]
+    [Description("Move um usuário repetidamente entre duas calls por um tempo")]
+    public async Task UserShake(CommandContext ctx, [Description("Usuário para ser movido")] DiscordMember usuario)
+    {
+        if (!serverContext.ReadyForCommands)
+            return;
 
-    // TODO: FAZER O "SHAKE"
+        try
+        {
+            if (await CommandVerifyMemberVoiceState(ctx) == false)
+            {                
+                return;
+            }
+
+            if (usuario.VoiceState != null && usuario.VoiceState.ChannelId != null)
+            {
+                var firstChannel = await serverContext.BindedDiscordServer.GetChannelAsync(usuario.VoiceState.ChannelId.Value);
+                var otherChannel = await serverContext.BindedDiscordServer.GetChannelAsync(config.IntermediaryChannel);
+
+                for (int i = 0; i < config.ShakeMoveTimes; i++)
+                {
+                    await otherChannel.PlaceMemberAsync(usuario);
+                    await Task.Delay(200);
+                    await firstChannel.PlaceMemberAsync(usuario);
+                }
+            }
+            else
+            {
+                await CommandErrorResponse(ctx, $"O usuário {usuario.Username} não está em call");
+                return;
+            }
+
+            await ctx.RespondAsync("Usuário chacoalhado com sucesso");
+        }
+        catch (Exception e)
+        {
+            await ((IModule) this).DumpException(e, persistance);
+        }
+    }
 
 }
 
 public class UtilityConfig
 {
+    public ulong IntermediaryChannel { get; set; } = 0;
+    public uint ShakeMoveTimes { get; set; } = 5;
 }
 
 public class UtilityData
