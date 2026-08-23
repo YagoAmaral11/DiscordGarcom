@@ -4,12 +4,9 @@ using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.Garc_Modules;
@@ -30,8 +27,9 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         var deafenMention = CommandBuilder.From(DeafenMention).WithParent(utility);
         var userCount = CommandBuilder.From(UserCount).WithParent(utility);
         var userMove = CommandBuilder.From(UserMove).WithParent(utility);
+        var userShake = CommandBuilder.From(UserShake).WithParent(utility);
 
-        utility.WithSubcommands([deafenMention, userCount, userMove]);
+        utility.WithSubcommands([deafenMention, userCount, userMove, userShake]);
 
         return [utility];
     }
@@ -197,6 +195,8 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
             {                
                 return;
             }
+
+            await ctx.DeferResponseAsync();
 
             if (usuario.VoiceState != null && usuario.VoiceState.ChannelId != null)
             {

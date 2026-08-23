@@ -155,6 +155,62 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
         return true;
     }
 
+    /// <summary>
+    /// Divides a collection into pages and retrieves the items on the specified page.
+    /// </summary>
+    /// <typeparam name="T">The type of elements in the collection.</typeparam>
+    /// <param name="list">The collection of items to paginate. Cannot be <see langword="null"/>.</param>
+    /// <param name="validPage">When this method returns, contains <see langword="true"/> if the specified page exists; otherwise, <see
+    /// langword="false"/>.</param>
+    /// <param name="pageFirstElementIndex">The index of the first element on the specified page</param>
+    /// <param name="pageLastElementIndex">The index of the last element on the specified page</param>
+    /// <param name="pageCount">The amount of pages available</param>
+    /// <param name="page">The page number to retrieve. Must be greater than or equal to 1. Defaults to 1.</param>
+    /// <param name="pageSize">The number of items per page. Must be greater than or equal to 1. Defaults to 10.</param>
+    /// <returns>An <see cref="IEnumerable{T}"/> containing the items on the specified page. If the page does not exist, returns
+    /// an null collection.</returns>
+    public static IEnumerable<T> Paginate<T>(IEnumerable<T> list, out bool validPage, out int pageFirstElementIndex, out int pageLastElementIndex, out int pageCount, int page = 1, int pageSize = 10)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        ArgumentOutOfRangeException.ThrowIfLessThan<int>(page, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+
+        int listCount = list.Count();
+
+        if (listCount == 0)
+        {
+            validPage = false;
+            pageFirstElementIndex = -1;
+            pageLastElementIndex = -1;
+            pageCount = 0;
+            return null;
+        }
+
+        pageCount = (int) Math.Ceiling((double) listCount / pageSize);        
+
+        pageFirstElementIndex = pageSize * (page - 1);
+        if (pageFirstElementIndex < 0)
+            pageFirstElementIndex = 0;
+
+        int finalElement = listCount - 1;
+
+        if (finalElement < pageFirstElementIndex)
+        {
+            validPage = false;
+            pageFirstElementIndex = -1;
+            pageLastElementIndex = -1;
+            return null;
+        }
+
+        pageLastElementIndex = pageFirstElementIndex + pageSize - 1;
+
+        if (pageLastElementIndex > finalElement)
+            pageLastElementIndex = finalElement;
+
+        validPage = true;
+        int rangeLast = pageLastElementIndex + 1;
+        return list.ToList()[pageFirstElementIndex..rangeLast];
+    }
 
     // Usados para inicializar data e config; Data quando não nenhuma data é carregada. Config quando não existe nenhum config inicial.
     protected abstract SavedData InitializeData();

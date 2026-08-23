@@ -121,6 +121,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             c.Passphrase = config.LavalinkKeyword;            
         });
 
+        // /*
         services.Configure<IdleInactivityTrackerOptions>(c =>
         {
             c.Timeout = TimeSpan.FromMinutes(config.JukeboxDisconnectOnInactiveMinutes);
@@ -129,7 +130,8 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         services.Configure<UsersInactivityTrackerOptions>(c =>
         {
             c.Timeout = TimeSpan.FromMinutes(config.JukeboxDisconnectOnAlone);
-        });
+        });        
+        // /*
 
         return;
     }
@@ -400,9 +402,9 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         return section;
     }
 
-    private static bool JukeboxHaveTrack(LavalinkPlayer player) => player.State == PlayerState.Playing || player.State == PlayerState.Paused;
-    private static bool JukeboxIsPaused(LavalinkPlayer player) => player.State == PlayerState.Paused;
-    private static LavalinkTrack JukeboxCurrentTrack(LavalinkPlayer player) => player.CurrentTrack;
+    public static bool JukeboxHaveTrack(LavalinkPlayer player) => player.State == PlayerState.Playing || player.State == PlayerState.Paused;
+    public static bool JukeboxIsPaused(LavalinkPlayer player) => player.State == PlayerState.Paused;
+    public static LavalinkTrack JukeboxCurrentTrack(LavalinkPlayer player) => player.CurrentTrack;
     public static string PrintTimeSpan(TimeSpan timeSpan)
     {                
         if (timeSpan.Days > 0)
@@ -790,7 +792,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 return;
             }                
 
-            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+            await ctx.RespondAsync($"Momento de reprodução alterado: *({PrintTimeSpan(tempo)}/{PrintTimeSpan(player.CurrentTrack.Duration)})*");
         }
         catch (Exception e)
         {
@@ -954,38 +956,31 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 // Fila de músicas
                 string fila = "";
 
-                int qntPaginas = player.TrackQueue.Count / config.JukeboxSimplifiedQueueMessageMaxTracks + 1;
-                int pagAtual = pagina;
-                int indexDaPrimeiraMusicaPag = config.JukeboxSimplifiedQueueMessageMaxTracks * pagAtual - 1;
-                int indexUltimaMscDaFila = player.TrackQueue.Count - 1;
-
-                if (indexUltimaMscDaFila < indexDaPrimeiraMusicaPag)
-                {
-                    await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
-                    return;
-                }
+                var result = Paginate(player.TrackQueue, out bool validPage, out int indexDaPrimeiraMusicaPag, out int indexMusicaFinalPag, 
+                    out int qntPaginas, pagina, config.JukeboxSimplifiedQueueMessageMaxTracks);                
 
                 if (player.TrackQueue.Count == 0)
                 {
                     fila = "A fila está vazia. Use o comando play para inserir novas músicas";
+                } 
+                else if (!validPage)
+                {
+                    await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
+                    return;
                 }
                 else
                 {
-                    int indexMusicaFinalPag = indexDaPrimeiraMusicaPag + config.JukeboxSimplifiedQueueMessageMaxTracks;
-
-                    if (indexMusicaFinalPag > indexUltimaMscDaFila)
-                    {
-                        indexMusicaFinalPag = indexUltimaMscDaFila;
-                    }
-
-                    for (int index = indexDaPrimeiraMusicaPag; index < indexMusicaFinalPag; index++)
+                    int index = indexDaPrimeiraMusicaPag;
+                    for (int i = 0; i < result.Count(); i++)
                     {
                         var song = player.TrackQueue[index];
+
                         fila += $"**{index}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
+
                         index++;
                     }
 
-                    fila += $"\n\nExibindo página {pagAtual} de {qntPaginas}";
+                    fila += $"\n\nExibindo página {pagina} de {qntPaginas}";
                 }
 
                 embed.AddField("Próximas Músicas", fila);
@@ -1026,38 +1021,31 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
             // Fila Recente
             string filaRecente = "";
 
-            int qntPaginas = player.RecentTracks.Count / config.JukeboxSimplifiedQueueMessageMaxTracks + 1;
-            int pagAtual = pagina;
-            int indexDaPrimeiraMusicaPag = config.JukeboxSimplifiedQueueMessageMaxTracks * pagAtual - 1;
-            int indexUltimaMscRecente = player.TrackQueue.Count - 1;
-
-            if (indexUltimaMscRecente < indexDaPrimeiraMusicaPag)
-            {
-                await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
-                return;
-            }
+            var result = Paginate(player.RecentTracks, out bool validPage, out int indexDaPrimeiraMusicaPag,
+                out int indexMusicaFinalPag, out int qntPaginas, pagina, config.JukeboxSimplifiedQueueMessageMaxTracks);                      
 
             if (player.RecentTracks.Count == 0)
             {
                 filaRecente = "Não há músicas recentes. Quando uma tocar, ficará guardada aqui";
             }
+            else if (!validPage)
+            {
+                await CommandErrorResponse(ctx, $"Essa página não existe. Tente com uma entre 1 e {qntPaginas}");
+                return;
+            }
             else
             {
-                int indexMusicaFinalPag = indexDaPrimeiraMusicaPag + config.JukeboxSimplifiedQueueMessageMaxTracks;
-
-                if (indexMusicaFinalPag > indexUltimaMscRecente)
-                {
-                    indexMusicaFinalPag = indexUltimaMscRecente;
-                }
-
-                for (int index = indexDaPrimeiraMusicaPag; index < indexMusicaFinalPag; index++)
+                int index = indexDaPrimeiraMusicaPag;
+                for (int i = 0; i < result.Count(); i++)
                 {
                     var song = player.RecentTracks[index];
+
                     filaRecente += $"**{index - player.RecentTracks.Count}:** {song.Title} *({PrintTimeSpan(song.Duration)})*\n";
+
                     index++;
                 }
 
-                filaRecente = $"\n\nExibindo página {pagAtual} de {qntPaginas}";
+                filaRecente += $"\n\nExibindo página {pagina} de {qntPaginas}";
             }
 
             embed.WithDescription(filaRecente);            
