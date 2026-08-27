@@ -3,20 +3,19 @@ using DSharpPlus.Commands.Trees;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core;
 
-/*  ORDEM DE CHAMADA DOS MÉTODOS:     
- *  0. ConfigureServices (Usado para adicionar IServices que o módulo usa)
- *  1. Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)
- *  2. ConfigureEventHandlers (Usado para receber eventos do bot)
- *  3. ReceiveServices (Recebe o ServiceProvider construído)
- *  4. Pre-Start 0 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
- *  5. Pre-Start 1 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
- *  6. Pre-Start 2 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
- *  7. Start (Usado assim que o bot se conecta ao servidor e está prestes a executar; Se precisar usar outro módulo, use aqui)
+/*  ORDEM DE CHAMADA DOS MÉTODOS:      
+ *  Initialize (Usado para inicializar as variáveis do módulo; Não usar outro módulo aqui)
+ *  ConfigureEventHandlers (Usado para receber eventos do bot)
+ *  ConfigureServices (Usado para adicionar IServices que o módulo usa) 
+ *  ReceiveServices (Recebe o ServiceProvider construído)
+ *  Pre-Start 0 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  Pre-Start 1 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  Pre-Start 2 (Um tipo de segundo Initialize, usado para inicializar outras variáveis de módulo)
+ *  Start (Usado assim que o bot se conecta ao servidor e está prestes a executar; Se precisar usar outro módulo, use aqui)
  */
 
 public interface IModule
@@ -54,31 +53,6 @@ public interface IModule
         }
     }
 
-    public Task<bool> SaveData();    
-
-    // TODO: Depois passar isso para base Module
-    public async Task<bool> DumpException(Exception e, IPersistance persistance)
-    {
-        DateTimeOffset time = DateTimeOffset.Now;
-        Console.WriteLine(LogName + $" Error at time {time.ToString()}: " + e);
-        string filename = $"{time.Date.Year}.{time.Date.Month}.{time.Date.Day}_{time.Hour}.{time.Minute}.{time.Second}.{time.Millisecond}_UTC{time.Offset.ToString().Replace(':', '-')}";
-
-        try
-        {
-            StringBuilder stringBuilder = new();
-            stringBuilder.AppendLine($"{e.HResult}: {e.Source} | " + e.Message);
-            stringBuilder.AppendLine(e.StackTrace);
-            var str = stringBuilder.ToString();
-
-            await persistance.WriteRaw(str, "ErrorDumps/" + filename, ".txt");
-        }
-        catch (Exception e2)
-        {
-            Console.WriteLine(LogName + $" Error trying to dump exception: " + e2);
-            return false;
-        }
-
-        return true;
-    }
+    public Task<bool> SaveData();            
 
 }

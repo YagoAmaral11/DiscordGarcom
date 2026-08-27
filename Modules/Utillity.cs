@@ -21,17 +21,12 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
 
     public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {
-        CommandBuilder utility = new();
-        utility.WithName("Utility");
-
-        var deafenMention = CommandBuilder.From(DeafenMention).WithParent(utility);
-        var userCount = CommandBuilder.From(UserCount).WithParent(utility);
-        var userMove = CommandBuilder.From(UserMove).WithParent(utility);
-        var userShake = CommandBuilder.From(UserShake).WithParent(utility);
-
-        utility.WithSubcommands([deafenMention, userCount, userMove, userShake]);
-
-        return [utility];
+        var deafenMention = CommandBuilder.From(DeafenMention);
+        var userCount = CommandBuilder.From(UserCount);
+        var userMove = CommandBuilder.From(UserMove);
+        var userShake = CommandBuilder.From(UserShake);
+        
+        return [deafenMention, userCount, userMove, userShake];
     }
 
     public override List<Type> GetStaticCommands() => [];    
@@ -47,24 +42,18 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     // TODO: Adicionar um cooldown para esse comando, para evitar spam
     public async Task DeafenMention(CommandContext ctx)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {            
             DiscordMember pedinte = ctx.Member;
-            DiscordChannel canalDeVoz;                        
+            DiscordChannel canalDeVoz;
 
-            if (ctx.Member.VoiceState != null && ctx.Member.VoiceState.ChannelId != null)
-            {
-                canalDeVoz = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
-            }
-            else
-            {
-                await ctx.RespondAsync("Você deve estar em um canal de voz para usar esse comando");
+            if (!await CommandVerifyMemberVoiceState(ctx))
                 return;
-            }
 
+            canalDeVoz = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
 
             string mentions = string.Empty;
 
@@ -83,12 +72,12 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
             }
             else
             {
-                await ctx.RespondAsync("Nenhum usuário elegível");
+                await CommandErrorResponse(ctx, "Nenhum usuário elegível");                
             }            
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -96,22 +85,19 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     [Description("Conta os usuários em uma call ou chat")]
     public async Task UserCount(CommandContext ctx, [Description("Canal para contar usuários")] DiscordChannel canal = null)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {
             if (canal == null)
             {
-                if (ctx.Member.VoiceState != null && ctx.Member.VoiceState.ChannelId != null)
-                {
-                    canal = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
-                }
-                else
-                {
-                    await ctx.RespondAsync("Você deve estar em um canal de voz ou especificar um canal para usar esse comando");
+                if (!await CommandVerifyMemberVoiceState(ctx))
+                {                    
                     return;
                 }
+
+                canal = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
             }
 
             int userCount = 0;
@@ -136,7 +122,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -144,32 +130,29 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     [Description("Move todos os usuários de uma call para outra")]
     public async Task UserMove(CommandContext ctx, [Description("Call de destino")] DiscordChannel destino, [Description("Move os usuários dessa call")] DiscordChannel origem = null)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
-        {
-            await ctx.DeferResponseAsync();
-
+        {                        
             if (destino.Type != DiscordChannelType.Voice)
             {
-                await ctx.RespondAsync("O destino deve ser um canal de voz");
+                await CommandErrorResponse(ctx, "O destino deve ser um canal de voz");                
                 return;
-            }
+            }            
 
             if (origem == null)
             {
-                if (ctx.Member.VoiceState != null && ctx.Member.VoiceState.ChannelId != null)
-                {
-                    origem = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
-                }
-                else
-                {
-                    await ctx.RespondAsync("Você deve estar em um canal de voz ou especificar um canal de origem para usar esse comando");
+                if (!await CommandVerifyMemberVoiceState(ctx))
                     return;
-                }
+
+                origem = await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value);
             }
 
+            if ((await CommandVerifyMovePermission(ctx, ctx.Member, origem) && await CommandVerifyMovePermission(ctx, ctx.Member, destino)) == false)
+                return;
+
+            await ctx.DeferResponseAsync();
             foreach (var user in origem.Users)
             {                
                 await destino.PlaceMemberAsync(user);
@@ -178,7 +161,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
     
@@ -186,7 +169,7 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
     [Description("Move um usuário repetidamente entre duas calls por um tempo")]
     public async Task UserShake(CommandContext ctx, [Description("Usuário para ser movido")] DiscordMember usuario)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
@@ -196,13 +179,15 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
                 return;
             }
 
-            await ctx.DeferResponseAsync();
+            if (!await CommandVerifyMovePermission(ctx, ctx.Member, await serverContext.BindedDiscordServer.GetChannelAsync(ctx.Member.VoiceState.ChannelId.Value)))
+                return;
 
             if (usuario.VoiceState != null && usuario.VoiceState.ChannelId != null)
             {
                 var firstChannel = await serverContext.BindedDiscordServer.GetChannelAsync(usuario.VoiceState.ChannelId.Value);
                 var otherChannel = await serverContext.BindedDiscordServer.GetChannelAsync(config.IntermediaryChannel);
 
+                await ctx.DeferResponseAsync();
                 for (int i = 0; i < config.ShakeMoveTimes; i++)
                 {
                     await otherChannel.PlaceMemberAsync(usuario);
@@ -210,17 +195,22 @@ public class Utility(IPersistance persistance, IConfigPersistance configPersista
                     await firstChannel.PlaceMemberAsync(usuario);
                 }
             }
-            else
+            else if (usuario.VoiceState == null)
             {
                 await CommandErrorResponse(ctx, $"O usuário {usuario.Username} não está em call");
                 return;
             }
+            else if (usuario.VoiceState.ChannelId != ctx.Member.VoiceState.ChannelId)
+            {
+                await CommandErrorResponse(ctx, $"O usuário {usuario.Username} não está na mesma call que você");
+                return;
+            }            
 
             await ctx.RespondAsync("Usuário chacoalhado com sucesso");
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 

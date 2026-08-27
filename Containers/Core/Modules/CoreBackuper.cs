@@ -2,7 +2,6 @@
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
-using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -10,68 +9,32 @@ using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core.Modules;
 
-public class CoreBackuper(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
-{
-    IServerContext serverContext;
-    CoreBackuperConfig config;
-    IPersistance persistance = persistance;
-    IConfigPersistance configPersistance = configPersistance;
+public class CoreBackuper(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : BaseModule<CoreBackuperConfig, CoreBackuperData>(persistance, configPersistance)
+{    
     IScheduler scheduler = scheduler;    
 
-    public string Name => "CoreBackuper";
+    public override string Name => "CoreBackuper";
+    protected override bool ThrowExceptionOnMissingConfig => false;
+    protected override CoreBackuperConfig InitializeConfig() => new();
+    protected override CoreBackuperData InitializeData() => new();
 
-    public Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
-    public IEnumerable<CommandBuilder> GetDynamicCommands()
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;
+
+    public override List<Type> GetStaticCommands() => [];
+    public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {        
-        var backupCmd = CommandBuilder.From(RealizeBackupCmd).WithDescription("Realiza um backup manual de todos os módulos do bot");
+        var backupCmd = CommandBuilder.From(RealizeBackupCmd).WithDescription("Realiza um backup manual dos dados dos módulos do bot");
         return [backupCmd];
-    }
-    public List<Type> GetStaticCommands() => [];
+    }    
 
 
-
-    public async Task<bool> Initialize(IServerContext serverContext)
-    {
-        IModule mod = this;
-
-        if (persistance == null)
-            throw new Exception(mod.LogName + "IPersistance is not assigned to the module");
-
-        if (configPersistance == null)
-            throw new Exception(mod.LogName + "IConfigPersistance is not assigned to the module");
-
-        this.serverContext = serverContext;
-        config = new();
-
-        if (await configPersistance.ConfigExists(this))
-        {
-            config = await configPersistance.LoadConfig(this, typeof(CoreBackuperConfig)) as CoreBackuperConfig;
-        }
-        else
-        {
-            // Cria uma configuração inicial
-            await configPersistance.WriteConfig(this, config);
-            throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
-        }
-
-        return true;
-    }
-
-    public Task ReceiveServices(IServiceProvider serviceProvider) => Task.CompletedTask;
-
-    public Task PreStart_0() => Task.CompletedTask;
-
-    public Task Start()
+    public override Task Start()
     {
         // Inicializa agendamentos
         scheduler.ScheduleRepeatEvery(new Func<Task>(RealizeBackup), null, 0, config.BackupInterval);
 
         return Task.CompletedTask;
-    }
-
-
-    public Task<bool> SaveData() => Task.FromResult(true);
-
+    }    
 
 
     public async Task RealizeBackup()
@@ -96,23 +59,25 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
             }
             catch (Exception e)
             {
-                await ((IModule) this).DumpException(e, persistance);
+                await BaseModule<int, int>.DumpException(module, e, persistance);                
             }
         }
     }
 
+
+    // COMANDOS
     [Command("Backup")]    
     public async Task RealizeBackupCmd(CommandContext ctx)
     {
         // TODO: Limitar isso à somente administradores do bot        
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {
             if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
             {
-                await ctx.RespondAsync("Você não tem permissão para usar esse comando.");
+                await CommandErrorResponse(ctx, "Você não tem permissão para usar esse comando");                
                 return;
             }
 
@@ -121,7 +86,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);            
+            await DumpException(e);            
         }        
     }
 
@@ -130,4 +95,8 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
 public class CoreBackuperConfig
 {
     [JsonInclude] public TimeSpan BackupInterval { get; set; } = new TimeSpan(1, 0, 0);
+}
+
+public class CoreBackuperData
+{
 }

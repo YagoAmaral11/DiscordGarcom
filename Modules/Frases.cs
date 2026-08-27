@@ -1,4 +1,5 @@
 ﻿using DiscordGarçom.Containers.Core;
+using DiscordGarçom.Containers.Core.Modules;
 using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
@@ -7,98 +8,66 @@ using DSharpPlus.EventArgs;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace DiscordGarçom.GarcModules;
 
 [Command("Frases")]
-public class Frases(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
+public class Frases(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : BaseModule<FrasesConfig, FrasesData>(persistance, configPersistance)
 {
-    // Config
-    private FrasesConfig config;
+    public override string Name => "Frases";
+    protected override bool ThrowExceptionOnMissingConfig => true;
 
     // Dependencies
-    private Random rng;
-    private IServiceProvider services;
-    private IPersistance persistance = persistance;
-    private IConfigPersistance configPersistance = configPersistance;
-    private IScheduler scheduler = scheduler;
-    private IServerContext serverContext; // Qual servidor do Discord que o módulo está rodando, usado para pegar informações do servidor    
+    private Random rng;    
+    private IScheduler scheduler = scheduler;    
 
     // Cached Channels
     private DiscordChannel origin; // Canal de onde as frases serão coletadas
     private DiscordChannel broadcast; // Canal onde as frases serão enviadas        
 
-    // Data
-    private FrasesData data;
+    // Data    
     private List<ulong> cachedMessageIDs = new(); // A lista com os IDs das mensagens em cache
     private DiscordMessage daily; // Mensagem diária atual        
 
-    // Misc
-    private bool ready = false; // Se o módulo está pronto para receber comandos
-    private CommandBuilder moduleCB = new(); // Usado para registrar os comandos do módulo
+    // Misc    
+    private CommandBuilder moduleCB = new(); // Usado para registrar os comandos do módulo    
 
+    protected override FrasesData InitializeData() => new();
+    protected override FrasesConfig InitializeConfig() => new();
 
-    [JsonIgnore] public string Name => "Frases";
-
-
-    public List<Type> GetStaticCommands() => [];
-    public IEnumerable<CommandBuilder> GetDynamicCommands()
+    public override List<Type> GetStaticCommands() => [];
+    public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {
         moduleCB = new CommandBuilder().WithName("Frases");
-        // moduleCB.WithDelegate(); TODO: Fazer com que o comando "frases" mostre ajuda ou algo do tipo
 
-        var RandomMessageCB = CommandBuilder.From(RandomMessage).WithParent(moduleCB).WithDescription("Mostra uma frase aleatória do canal de frases");
-        var DailyMessageCB = CommandBuilder.From(ResendDaily).WithParent(moduleCB).WithDescription("Mostra a frase diária atual");
+        var RandomMessageCB = CommandBuilder.From(RandomMessage).WithParent(moduleCB); 
+        var DailyMessageCB = CommandBuilder.From(ResendDaily).WithParent(moduleCB);
 
         moduleCB.WithSubcommands([RandomMessageCB, DailyMessageCB]);
         
         return [moduleCB];
     }
 
-
-    public async Task<bool> Initialize(IServerContext serverContext)
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb)
     {
-        IModule mod = this;
-
-        if (persistance == null)
-            throw new Exception(mod.LogName + "IPersistance is not assigned to the module");
-
-        if (configPersistance == null)
-            throw new Exception(mod.LogName + "IConfigPersistance is not assigned to the module");
-
-        rng = new();
-        this.serverContext = serverContext;
-        
-        config = new();
-
-        if (await configPersistance.ConfigExists(this))
-        {
-            // Carrega a configuração existente
-            await LoadConfig();            
-        }
-        else
-        {
-            // Cria uma configuração inicial
-            await configPersistance.WriteConfig(this, config);
-            throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
-        }
-
-        await LoadData();        
-
-        return true;
-    }
-
-    public Task ReceiveServices(IServiceProvider serviceProvider)
-    {
-        services = serviceProvider;
+        ehb.HandleMessageCreated(MessageCreated);
+        ehb.HandleMessageDeleted(MessageDeleted);
         return Task.CompletedTask;
     }
 
-    public async Task PreStart_0()
+
+    public override async Task<bool> Initialize(IServerContext serverContext)
     {
-        ready = false;
+        await base.Initialize(serverContext);
+        rng = new();
+        return true;
+    }   
+
+    public async override Task PreStart_0()
+    {        
         origin = await serverContext.BindedDiscordServer.GetChannelAsync(config.OriginChannelID);
         broadcast = await serverContext.BindedDiscordServer.GetChannelAsync(config.BroadcastChannelID);
 
@@ -106,11 +75,9 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
             daily = await origin.GetMessageAsync(data.DailyID);
 
         await Fetch();
-
-        ready = true;
     }
 
-    public Task Start()
+    public override Task Start()
     {        
         // Inicializa agendamentos        
         SemanalRepeatDay[] semanalRepeatDays = new SemanalRepeatDay[7];
@@ -121,36 +88,7 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
 
         scheduler.ScheduleRepeatSemanal(new Func<Task>(DailyMessage), null, 0, semanalRepeatDays);
         return Task.CompletedTask;
-    }
-
-
-    public Task ConfigureEventHandlers(EventHandlingBuilder ehb)
-    {
-        ehb.HandleMessageCreated(MessageCreated);
-        ehb.HandleMessageDeleted(MessageDeleted);
-        return Task.CompletedTask;
-    }
-
-    private async Task LoadConfig()
-    {
-        FrasesConfig loadedConfig = await configPersistance.LoadConfig(this, typeof(FrasesConfig)) as FrasesConfig;
-        config = loadedConfig;
-    }
-
-    public async Task<bool> SaveData()
-    {
-        await persistance.WriteObject(data, typeof(FrasesData), Name + "Data");
-        return true;
-    }
-
-    public async Task LoadData()
-    {
-        if (await persistance.KeyExists(Name + "Data" + ".json"))
-        {
-            FrasesData loadedData = await persistance.ReadObject(Name + "Data", typeof(FrasesData)) as FrasesData;
-            data = loadedData;
-        }
-    }
+    }    
 
 
     private Task MessageCreated(DiscordClient client, MessageCreatedEventArgs args)
@@ -177,61 +115,13 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
         return Task.CompletedTask;
     }
 
-
-    // Seleciona e envia uma mensagem aleatória do canal de origem como resposta para o comando
-    [Command("Aleatoria")]
-    public async Task RandomMessage(CommandContext context)
-    {
-        if (!serverContext.ReadyForCommands)
-            return;
-
-        try
-        {
-            if (context.Guild != serverContext.BindedDiscordServer || !ready)
-                return;
-
-            ulong messageID = ChooseRandomMessage();
-            DiscordMessage msg = await origin.GetMessageAsync(messageID);
-            DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
-            await context.RespondAsync(embed);
-        }
-        catch (Exception e)
-        {
-            await ((IModule) this).DumpException(e, persistance);
-        }        
-    }
-
-    // Reenvia a mensagem diária atual como resposta para o comando
-    [Command("Diaria")]
-    public async Task ResendDaily(CommandContext context)
-    {
-        if (!serverContext.ReadyForCommands)
-            return;
-
-        try
-        {
-            if (daily != null)
-            {
-                await context.RespondAsync(CreateDailyMessageToSend(daily));
-            }
-            else
-            {
-                await context.RespondAsync("Muito cedo chefe!\nA mensagem diária não foi escolhida ainda");
-            }
-        }
-        catch (Exception e)
-        {
-            await ((IModule) this).DumpException(e, persistance);
-        }        
-    }
-
+    
 
     // Pega todas as mensagens do canal de origem
     // Realiza o cache, salvando os IDs em uma lista
     // TODO: Verificar se ainda dá problema de ratelimits e melhorar o logging
     private async Task Fetch()
-    {
-        // TODO: Solucionar problemas de ratelimits (?) acontecem por algum motivo
+    {        
         // Talvez pq as primeiras mensagem são buscadas duas vezes? melhorar essa parte do código
         List<ulong> messageIDs = new();
         List<ulong> filteredMessageIDs = new();        
@@ -292,8 +182,8 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
                 }
             }
             catch (Exception e)
-            {
-                // TODO: Dar log no erro
+            {                
+                await DumpException(e);
                 errorOcorred = true;
                 await Task.Delay(config.ErrorDelayMs);
             }
@@ -387,6 +277,52 @@ public class Frases(IPersistance persistance, IConfigPersistance configPersistan
     }
 
 
+    // Seleciona e envia uma mensagem aleatória do canal de origem como resposta para o comando
+    [Command("Aleatoria")]
+    [Description("Mostra uma frase aleatória do canal de frases")]
+    public async Task RandomMessage(CommandContext context)
+    {        
+        if (!await CommandReadyPreCondition(context))
+            return;
+
+        try
+        {           
+            ulong messageID = ChooseRandomMessage();
+            DiscordMessage msg = await origin.GetMessageAsync(messageID);
+            DiscordEmbed embed = EmbedBuilder(msg.Content, msg.Author, msg.Timestamp, config.RandomEmbedTitle, config.RandomEmbedColorHex, msg.JumpLink.ToString());
+            await context.RespondAsync(embed);
+        }
+        catch (Exception e)
+        {
+            await DumpException(e);
+        }
+    }
+
+    // Reenvia a mensagem diária atual como resposta para o comando
+    [Command("Diaria")]
+    [Description("Mostra a frase diária atual")]
+    public async Task ResendDaily(CommandContext context)
+    {
+        if (!await CommandReadyPreCondition(context))
+            return;
+
+        try
+        {
+            if (daily != null)
+            {
+                await context.RespondAsync(CreateDailyMessageToSend(daily));
+            }
+            else
+            {
+                await CommandErrorResponse(context, "Muito cedo chefe!\nA mensagem diária não foi escolhida ainda");                
+            }
+        }
+        catch (Exception e)
+        {
+            await DumpException(e);
+        }
+    }    
+    
 }
 
 public class FrasesData

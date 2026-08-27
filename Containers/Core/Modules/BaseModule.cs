@@ -43,6 +43,10 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     public virtual Task PreStart_1() => Task.CompletedTask;
     public virtual Task PreStart_2() => Task.CompletedTask;
 
+    // Usados para inicializar data e config; Data quando não nenhuma data é carregada. Config quando não existe nenhum config inicial.
+    protected abstract SavedData InitializeData();
+    protected abstract Config InitializeConfig();
+
 
     public virtual async Task<bool> Initialize(IServerContext serverContext)
     {
@@ -83,7 +87,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     {
         services = serviceProvider;
         return Task.CompletedTask;
-    }
+    }    
 
     public virtual async Task<bool> SaveData()
     {
@@ -107,8 +111,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     }
 
 
-    // Util Methods    
-
+    // Helper Methods    
     /// <summary>
     /// Responde a comando com uma mensagem de erro; Caso a mensagem tenha sido enviada por um Slash Command, a resposta é vista somente pelo usuário que mandou o comando
     /// OBS: Não pode se usar o DeferMessage antes para isso funcionar corretamente.
@@ -124,7 +127,7 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
             {
                 var responseBuilder = new DiscordFollowupMessageBuilder();
                 responseBuilder.WithContent(response).AsEphemeral();
-                await slashCtx.FollowupAsync(responseBuilder);
+                await slashCtx.RespondAsync(responseBuilder);                
             }
             else
             {
@@ -143,16 +146,47 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
     /// <param name="ctx">O CommandContext do comando</param>
     /// <param name="discordChannel">O canal para comparar se o usuário está conectado</param>
     /// <param name="response">A resposta de erro caso o usuário não esteja conectado</param>
+    /// <param name="member">O Usuário para verificar se está conectado. Se null, usará o dono do comando</param>
     /// <returns>Retorna true se o usuário estiver conectado em algum canal do server, retorna false caso contrário</returns>
-    public async Task<bool> CommandVerifyMemberVoiceState(CommandContext ctx, string response = "Você deve estar conectado em um canal de voz para usar esse comando")
+    public async Task<bool> CommandVerifyMemberVoiceState(CommandContext ctx, string response = "Você deve estar conectado em um canal de voz para usar esse comando", DiscordMember member = null)
     {       
-        if (ctx.Member.VoiceState == null || ctx.Member.VoiceState.GuildId == null || ctx.Member.VoiceState.GuildId != serverContext.BindedDiscordServer.Id || ctx.Member.VoiceState.ChannelId == null)
+        member ??= ctx.Member;
+
+        if (member.VoiceState == null || member.VoiceState.GuildId == null || member.VoiceState.GuildId != serverContext.BindedDiscordServer.Id || member.VoiceState.ChannelId == null)
         {
             await CommandErrorResponse(ctx, response);
             return false;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Verifica se o bot está preparado para receber comandos
+    /// </summary>
+    /// <param name="ctx">O CommandContext do comando</param>
+    /// <returns>Retorna false se o bot ainda não estiver pronto para receber comandos</returns>
+    public async Task<bool> CommandReadyPreCondition(CommandContext ctx)
+    {
+        if (!serverContext.ReadyForCommands)
+        {
+            await CommandErrorResponse(ctx, "O bot está inicializando. Aguarde e tente novamente em breve");
+            return false;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> CommandVerifyMovePermission(CommandContext ctx, DiscordMember user, DiscordChannel channel)
+    {
+        if (user.Permissions.HasPermission(DiscordPermission.Administrator))
+            return true;
+
+        if (channel.PermissionsFor(user).HasPermission(DiscordPermission.MoveMembers))
+            return true;
+
+        await CommandErrorResponse(ctx, $"Sem permissões para realizar esse comando");
+        return false;
     }
 
     /// <summary>
@@ -212,7 +246,56 @@ public abstract class BaseModule<Config, SavedData>(IPersistance persistance, IC
         return list.ToList()[pageFirstElementIndex..rangeLast];
     }
 
-    // Usados para inicializar data e config; Data quando não nenhuma data é carregada. Config quando não existe nenhum config inicial.
-    protected abstract SavedData InitializeData();
-    protected abstract Config InitializeConfig();
+    public string PrintDiscordRelativeTime(DateTimeOffset date) => $"<t:" + date.ToUnixTimeSeconds() + ":R>";
+    public string PrintDiscordTime(DateTimeOffset date, char type) => $"<t:" + date.ToUnixTimeSeconds() + ":" + type + ">";
+
+    public async static Task<bool> DumpException(IModule module, Exception e, IPersistance persistance)
+    {
+        DateTimeOffset time = DateTimeOffset.Now;
+        Console.WriteLine(module.LogName + $" Error at time {time.ToString()}: " + e);
+        string filename = $"{time.Date.Year}.{time.Date.Month}.{time.Date.Day}_{time.Hour}.{time.Minute}.{time.Second}.{time.Millisecond}_UTC{time.Offset.ToString().Replace(':', '-')}";
+
+        try
+        {
+            StringBuilder stringBuilder = new();
+            stringBuilder.AppendLine($"{e.HResult}: {e.Source} | " + e.Message);
+            stringBuilder.AppendLine(e.StackTrace);
+            var str = stringBuilder.ToString();
+
+            await persistance.WriteRaw(str, "ErrorDumps/" + filename, ".txt");
+        }
+        catch (Exception e2)
+        {
+            Console.WriteLine(module.LogName + $" Error trying to dump exception: " + e2);
+            return false;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> DumpException(Exception e)
+    {
+        var module = ((IModule) this);
+
+        DateTimeOffset time = DateTimeOffset.Now;
+        Console.WriteLine(module.LogName + $" Error at time {time.ToString()}: " + e);
+        string filename = $"{time.Date.Year}.{time.Date.Month}.{time.Date.Day}_{time.Hour}.{time.Minute}.{time.Second}.{time.Millisecond}_UTC{time.Offset.ToString().Replace(':', '-')}";
+
+        try
+        {
+            StringBuilder stringBuilder = new();
+            stringBuilder.AppendLine($"{e.HResult}: {e.Source} | " + e.Message);
+            stringBuilder.AppendLine(e.StackTrace);
+            var str = stringBuilder.ToString();
+
+            await persistance.WriteRaw(str, "ErrorDumps/" + filename, ".txt");
+        }
+        catch (Exception e2)
+        {
+            Console.WriteLine(module.LogName + $" Error trying to dump exception: " + e2);
+            return false;
+        }
+
+        return true;
+    }    
 }

@@ -1,12 +1,10 @@
 ﻿using DiscordGarçom.Containers.IO;
 using DSharpPlus;
 using DSharpPlus.Commands.Trees;
-using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -18,6 +16,8 @@ namespace DiscordGarçom.Containers.Core.Modules;
  *  OBS: Ao usar o CoreScheduler, garantir com que os métodos dos módulos em callback possam ser chamados em PreStart_1, 
  *       ou registrar apenas métodos que registrem uma "fila de chamados" que sejam executados posteriormente quando o módulo esteja realmente pronto. Isto é, 
  *       o método registrar que ele foi chamado e só realmente executar sua lógica depois, com o próprio módulo que usa o CoreScheduler sendo responsável por isso.
+ *  OBS²: Esse módulo não herda de BaseModule por ser um "módulo especial". Como não tem comandos, configurações e até mesmo sua forma de salvar dados é diferente do comum,
+ *        não faz muito sentido utilizar o BaseModule.
  */
 
 public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
@@ -174,7 +174,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                 }
                 catch (Exception ex)
                 {
-                    await ((IModule) this).DumpException(ex, persistance);
+                    await BaseModule<int, int>.DumpException(this, ex, persistance);
                 }
                 finally
                 {
@@ -184,7 +184,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
                     }
                     catch (Exception e)
                     {
-                        await ((IModule) this).DumpException(e, persistance);
+                        await BaseModule<int, int>.DumpException(this, e, persistance);
                     }
                 }                
             });
@@ -210,7 +210,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
         catch (Exception ex)
         {
-            await ((IModule) this).DumpException(ex, persistance);            
+            await BaseModule<int, int>.DumpException(this, ex, persistance);            
         }
     }
 
@@ -283,7 +283,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
         }
         catch (Exception ex)
         {
-            await ((IModule) this).DumpException(ex, persistance);
+            await BaseModule<int, int>.DumpException(this, ex, persistance);
         }        
     }
     
@@ -460,6 +460,7 @@ public class CoreScheduler(IPersistance persistance) : IModule, IScheduler
     }
 
     // OBS: Só consegue serializar DTOs simples e tipos primitivos; Objetos complexos podem não ser serializados corretamente    
+    //      Na dúvida, procure o que o System.Text.Json.JsonSerializer consegue serializar
     private static JsonObject SerializeObject(object obj, JsonSerializerOptions serializerOptions = null)
     {
         JsonObject serialized = new();

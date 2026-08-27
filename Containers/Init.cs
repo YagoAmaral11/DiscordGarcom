@@ -1,5 +1,4 @@
 ﻿using DiscordGarçom.Containers.Core.Modules;
-using DiscordGarçom.Containers.Core.Modules.Examples;
 using DiscordGarçom.Containers.IO;
 using DiscordGarçom.Garc_Modules;
 using DiscordGarçom.GarcModules;

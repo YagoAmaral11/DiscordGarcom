@@ -440,11 +440,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     {
         try
         {
-            await ((IModule) this).DumpException(new Exception($"Track Exception in {track.Track.Title} ({track.Identifier}): {exception.Message}, {exception.Cause}"), persistance);
+            await DumpException(new Exception($"Track Exception in {track.Track.Title} ({track.Identifier}): {exception.Message}, {exception.Cause}"));
         }
         catch
         {
-            await ((IModule) this).DumpException(new Exception("Error trying to create Track Exception"), persistance);
+            await DumpException(new Exception("Error trying to create Track Exception"));
         }
     }
 
@@ -452,11 +452,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
     {
         try
         {
-            await ((IModule) this).DumpException(new Exception($"Track Stuck in {track.Track.Title} ({track.Identifier}) at: {PrintTimeSpan(threshold)}"), persistance);
+            await DumpException(new Exception($"Track Stuck in {track.Track.Title} ({track.Identifier}) at: {PrintTimeSpan(threshold)}"));
         }
         catch
         {
-            await ((IModule) this).DumpException(new Exception("Error trying to create Track Stuck Exception"), persistance);
+            await DumpException(new Exception("Error trying to create Track Stuck Exception"));
         }
     }
 
@@ -525,7 +525,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -588,7 +588,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -644,7 +644,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -669,7 +669,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -695,7 +695,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -720,7 +720,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -753,7 +753,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -796,7 +796,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -832,11 +832,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 return;
             }
 
-            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+            await ctx.RespondAsync($"Momento de reprodução alterado: *({PrintTimeSpan(tempo)}/{PrintTimeSpan(player.CurrentTrack.Duration)})*");
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -879,11 +879,11 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
                 return;
             }
 
-            await ctx.RespondAsync($"Momento de reprodução alterado: ({PrintTimeSpan(tempo)})/({PrintTimeSpan(player.CurrentTrack.Duration)})");
+            await ctx.RespondAsync($"Momento de reprodução alterado: *({PrintTimeSpan(tempo)}/{PrintTimeSpan(player.CurrentTrack.Duration)})*");
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -914,7 +914,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -994,7 +994,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -1055,7 +1055,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -1103,7 +1103,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }            
     
@@ -1136,7 +1136,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -1161,7 +1161,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -1200,7 +1200,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
@@ -1239,7 +1239,7 @@ public class Jukebox(IPersistance persistance, IConfigPersistance configPersista
         }
         catch (Exception e)
         {
-            await ((IModule) this).DumpException(e, persistance);
+            await DumpException(e);
         }
     }
 
