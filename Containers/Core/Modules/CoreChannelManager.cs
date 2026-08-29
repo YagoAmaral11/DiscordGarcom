@@ -1,10 +1,12 @@
-﻿using DSharpPlus;
+﻿using DiscordGarçom.GarcModules;
+using DSharpPlus;
 using DSharpPlus.Commands;
 using DSharpPlus.Commands.Trees;
 using DSharpPlus.Entities;
-using DiscordGarçom.GarcModules;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -12,23 +14,20 @@ using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core.Modules;
 
-public class CoreChannelManager(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
+public class CoreChannelManager(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : BaseModule<ChannelManagerConfig, ChannelManagerData>(persistance, configPersistance)
 {
-    public string Name => "CoreChannelManager";
-
-    private IPersistance persistance = persistance;
-    private IConfigPersistance configPersistance = configPersistance;
-    private IScheduler scheduler = scheduler;
-    private IServerContext serverContext;
-
-    private ChannelManagerConfig config;
-    private ChannelManagerData data = new();
-
+    public override string Name => "CoreChannelManager";
+    protected override bool ThrowExceptionOnMissingConfig => true;
+    
+    private IScheduler scheduler = scheduler;    
     private DiscordChannel RootTempChannels;
-
     bool ready = false;
 
-    public Task ConfigureEventHandlers(EventHandlingBuilder ehb)
+    protected override ChannelManagerData InitializeData() => new();
+    protected override ChannelManagerConfig InitializeConfig() => new();   
+
+
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb)
     {
         ehb.HandleChannelDeleted((_, deletionArgs) =>
             {
@@ -44,66 +43,30 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return Task.CompletedTask;
     }
 
-    public IEnumerable<CommandBuilder> GetDynamicCommands()
+    public override List<Type> GetStaticCommands() => [];
+    public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {                
         CommandBuilder canaisTempCB = new();
         canaisTempCB.WithName("canaltemp");
 
-        var createTempChannelCmd = CommandBuilder.From(CreateTemporaryChannelCmd).WithDescription("Cria um canal temporário com tempo de vida passado").WithParent(canaisTempCB);
-        createTempChannelCmd.Parameters[0].Description = "Duração. Pode ser expresso nos formatos XXhYYmZZs ou XX:YY:ZZ";
-        createTempChannelCmd.Parameters[1].Description = "Se sim, apenas o dono pode, mas poderá puxar outros membros";
-        createTempChannelCmd.Parameters[2].Description = "O nome para o canal";        
-
-        var listTempChannelsCmd = CommandBuilder.From(ListTemporaryChannelsCmd).WithDescription("Lista os canais temporários que você possui").WithParent(canaisTempCB);        
-
-        var deleteTempChannelCmd = CommandBuilder.From(DeleteTemporaryChannelCmd).WithDescription("Deleta um canal temporário que você possui").WithParent(canaisTempCB);
-        deleteTempChannelCmd.Parameters[0].Description = "ID, link ou menção do canal. Canais de voz podem ser mencionados com #!";
+        var createTempChannelCmd = CommandBuilder.From(CreateTemporaryChannelCmd).WithParent(canaisTempCB);                        
+        var listTempChannelsCmd = CommandBuilder.From(ListTemporaryChannelsCmd).WithParent(canaisTempCB);        
+        var deleteTempChannelCmd = CommandBuilder.From(DeleteTemporaryChannelCmd).WithParent(canaisTempCB);        
 
         canaisTempCB.WithSubcommands([createTempChannelCmd, listTempChannelsCmd, deleteTempChannelCmd]);
 
         return [canaisTempCB];
     }
 
-    public List<Type> GetStaticCommands() => [];
+            
 
-
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
-    {
-        IModule mod = this;
-
-        if (persistance == null)
-            throw new Exception(mod.LogName + "IPersistance is not assigned to the module");
-
-        if (configPersistance == null)
-            throw new Exception(mod.LogName + "IConfigPersistance is not assigned to the module");
-
-        this.serverContext = serverContext;
-        config = new();
-
-        if (await configPersistance.ConfigExists(this))
-        {
-            // Carrega a configuração existente
-            await LoadConfig();
-        }
-        else
-        {
-            // Cria uma configuração inicial
-            await configPersistance.WriteConfig(this, config);
-            throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
-        }
-
-        await LoadData();
-
-        return true;
-    }
-
-    public async Task PreStart_0()
+    public override async Task PreStart_0()
     {
         RootTempChannels = await serverContext.BotDiscordClient.GetChannelAsync(config.TempChannelRootCategoryID);
         ready = true;
     }
 
-    public async Task Start()
+    public override async Task Start()
     {
         // Remove qualquer registro de canal temporário que não exista mais no servidor
         var channels = await serverContext.BindedDiscordServer.GetChannelsAsync();
@@ -116,28 +79,6 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
                 data.TempChannels.Remove(reg);
             }
         }
-    }
-
-
-    private async Task LoadConfig()
-    {
-        ChannelManagerConfig loadedConfig = await configPersistance.LoadConfig(this, typeof(ChannelManagerConfig)) as ChannelManagerConfig;
-        config = loadedConfig;
-    }
-
-    private async Task LoadData()
-    {
-        if (await persistance.KeyExists(Name + "Data" + ".json"))
-        {
-            ChannelManagerData loadedData = await persistance.ReadObject(Name + "Data", typeof(ChannelManagerData)) as ChannelManagerData;
-            data = loadedData;
-        }
-    }
-
-    public async Task<bool> SaveData()
-    {
-        await persistance.WriteObject(data, typeof(ChannelManagerData), Name + "Data");
-        return true;
     }
 
 
@@ -210,7 +151,6 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
         return (reg, channel);
     }
 
-
     public async Task DeleteTempChannel(ulong channelID)
     {
         // Verifica se o canal existe no registro
@@ -270,18 +210,20 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
     }
 
     public bool UserCanCreateTempChannel(ulong userID) => data.TempChannels.Where(r => r.IsOwned && r.OwnerID == userID).Count() < config.TempChannelCountPerUser;
-
     
-    [Command("criar")]    
-    public async Task CreateTemporaryChannelCmd(CommandContext ctx, TimeSpan duration, bool isPrivate = false, string name = null)
+
+    // COMANDOS
+    [Command("criar")]
+    [Description("Cria um canal temporário com tempo de vida passado")]
+    public async Task CreateTemporaryChannelCmd(CommandContext ctx, [Description("Duração. Pode ser expresso nos formatos XXhYYmZZs ou XX:YY:ZZ")] TimeSpan duration
+        , [Description("Se verdadeiro, só o dono consegue entrar, mas poderá puxar outros membros")] bool isPrivate = false, 
+        [Description("O nome para o canal")] string name = null)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
-        {
-            await ctx.DeferResponseAsync();
-
+        {            
             DateTimeOffset exclusionTime = DateTimeOffset.Now.Add(duration);
 
             if (UserCanCreateTempChannel(ctx.Member.Id))
@@ -299,30 +241,29 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
             }
             else
             {
-                await ctx.RespondAsync($"Desculpe, mas você já atingiu o limite de canais temporários que pode criar ({config.TempChannelCountPerUser}). Delete um antigo antes de criar outro.");
+                await CommandErrorResponse(ctx, $"Desculpe, mas você já atingiu o limite de canais temporários que pode criar ({config.TempChannelCountPerUser}). Apague um antes de criar outro.");                
             }
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in CreateTemporaryChannel command: {e.Message}");
+            await DumpException(e);
         }                       
     }
 
     [Command("listar")]
+    [Description("Lista os canais temporários que você possui")]
     public async Task ListTemporaryChannelsCmd(CommandContext ctx)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
-        {
-            await ctx.DeferResponseAsync();
-
+        {            
             var userChannels = data.TempChannels.Where(r => r.IsOwned && r.OwnerID == ctx.Member.Id).ToList();
 
             if (userChannels.Count == 0)
             {
-                await ctx.RespondAsync("Você não possui canais temporários ativos.");
+                await CommandErrorResponse(ctx, "Você não possui canais temporários ativos.");                
                 return;
             }
 
@@ -331,27 +272,26 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
             foreach (var channel in userChannels)
             {
                 var discordChannel = await serverContext.BindedDiscordServer.GetChannelAsync(channel.ChannelID);
-                sb.AppendLine($"* {discordChannel.Mention} (Exclusão: {channel.ExclusionTime})");
+                sb.AppendLine($"* {discordChannel.Mention} (Exclusão: {PrintDiscordRelativeTime(channel.ExclusionTime)} em {PrintDiscordTime(channel.ExclusionTime, 'f')})");
             }
 
             await ctx.RespondAsync(sb.ToString());
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in ListTemporaryChannels command: {e.Message}");
+            await DumpException(e);
         }        
     }
 
     [Command("deletar")]
-    public async Task DeleteTemporaryChannelCmd(CommandContext ctx, DiscordChannel channel)
+    [Description("Deleta um canal temporário que você possui")]
+    public async Task DeleteTemporaryChannelCmd(CommandContext ctx, [Description("ID, link ou menção do canal.")] DiscordChannel channel)
     {
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
-        {
-            await ctx.DeferResponseAsync();
-
+        {            
             var registry = data.TempChannels.FirstOrDefault(r => r.ChannelID == channel.Id && r.IsOwned && r.OwnerID == ctx.Member.Id);
 
             if (registry != null)
@@ -362,15 +302,15 @@ public class CoreChannelManager(IPersistance persistance, IConfigPersistance con
             }
             else
             {
-                await ctx.RespondAsync("Você não possui permissão para deletar este canal temporário.");
+                await CommandErrorResponse(ctx, "Você não possui permissão para deletar este canal temporário");                
             }
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in DeleteTemporaryChannel command: {e.Message}");
+            await DumpException(e);
         }                        
     }
-
+    
 }
 
 public class ChannelManagerConfig

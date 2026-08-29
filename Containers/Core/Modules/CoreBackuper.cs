@@ -9,66 +9,32 @@ using System.Threading.Tasks;
 
 namespace DiscordGarçom.Containers.Core.Modules;
 
-public class CoreBackuper(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : IModule
-{
-    IServerContext serverContext;
-    CoreBackuperConfig config;
-    IPersistance persistance = persistance;
-    IConfigPersistance configPersistance = configPersistance;
-    IScheduler scheduler = scheduler;
+public class CoreBackuper(IPersistance persistance, IConfigPersistance configPersistance, IScheduler scheduler) : BaseModule<CoreBackuperConfig, CoreBackuperData>(persistance, configPersistance)
+{    
+    IScheduler scheduler = scheduler;    
 
-    public string Name => "CoreBackuper";
+    public override string Name => "CoreBackuper";
+    protected override bool ThrowExceptionOnMissingConfig => false;
+    protected override CoreBackuperConfig InitializeConfig() => new();
+    protected override CoreBackuperData InitializeData() => new();
 
-    public Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;    
-    public IEnumerable<CommandBuilder> GetDynamicCommands()
+    public override Task ConfigureEventHandlers(EventHandlingBuilder ehb) => Task.CompletedTask;
+
+    public override List<Type> GetStaticCommands() => [];
+    public override IEnumerable<CommandBuilder> GetDynamicCommands()
     {        
-        var backupCmd = CommandBuilder.From(RealizeBackupCmd).WithDescription("Realiza um backup manual de todos os módulos do bot");
+        var backupCmd = CommandBuilder.From(RealizeBackupCmd).WithDescription("Realiza um backup manual dos dados dos módulos do bot");
         return [backupCmd];
-    }
-    public List<Type> GetStaticCommands() => [];
-
-
-
-    public async Task<bool> Initialize(IServerContext serverContext, IServiceProvider serviceProvider)
-    {
-        IModule mod = this;
-
-        if (persistance == null)
-            throw new Exception(mod.LogName + "IPersistance is not assigned to the module");
-
-        if (configPersistance == null)
-            throw new Exception(mod.LogName + "IConfigPersistance is not assigned to the module");
-
-        this.serverContext = serverContext;
-        config = new();
-
-        if (await configPersistance.ConfigExists(this))
-        {
-            config = await configPersistance.LoadConfig(this, typeof(CoreBackuperConfig)) as CoreBackuperConfig;
-        }
-        else
-        {
-            // Cria uma configuração inicial
-            await configPersistance.WriteConfig(this, config);
-            throw new Exception(mod.LogName + " config not found. Please modify the standard one.");
-        }
-
-        return true;
     }    
 
-    public Task PreStart_0() => Task.CompletedTask;
 
-    public Task Start()
+    public override Task Start()
     {
         // Inicializa agendamentos
         scheduler.ScheduleRepeatEvery(new Func<Task>(RealizeBackup), null, 0, config.BackupInterval);
 
         return Task.CompletedTask;
-    }
-
-
-    public Task<bool> SaveData() => Task.FromResult(true);
-
+    }    
 
 
     public async Task RealizeBackup()
@@ -79,29 +45,39 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
                 continue;
 
             Console.WriteLine((this as IModule).LogName + " backing up module " + module.LogName);
-            if (await module.SaveData())
+
+            try
             {
-                Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " completed successfully.");
+                if (await module.SaveData())
+                {
+                    Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " completed successfully.");
+                }
+                else
+                {
+                    Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " failed.");
+                }
             }
-            else
+            catch (Exception e)
             {
-                Console.WriteLine((this as IModule).LogName + " backup of module " + module.LogName + " failed.");
+                await BaseModule<int, int>.DumpException(module, e, persistance);                
             }
         }
     }
 
+
+    // COMANDOS
     [Command("Backup")]    
     public async Task RealizeBackupCmd(CommandContext ctx)
     {
         // TODO: Limitar isso à somente administradores do bot        
-        if (!serverContext.ReadyForCommands)
+        if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {
             if (!ctx.Member.Permissions.HasPermission(DiscordPermission.Administrator))
             {
-                await ctx.RespondAsync("Você não tem permissão para usar esse comando.");
+                await CommandErrorResponse(ctx, "Você não tem permissão para usar esse comando");                
                 return;
             }
 
@@ -110,7 +86,7 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
         }
         catch (Exception e)
         {
-            Console.WriteLine(((IModule)this).LogName + $" Error in RealizeBackup command: {e.Message}");
+            await DumpException(e);            
         }        
     }
 
@@ -119,4 +95,8 @@ public class CoreBackuper(IPersistance persistance, IConfigPersistance configPer
 public class CoreBackuperConfig
 {
     [JsonInclude] public TimeSpan BackupInterval { get; set; } = new TimeSpan(1, 0, 0);
+}
+
+public class CoreBackuperData
+{
 }

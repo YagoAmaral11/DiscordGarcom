@@ -29,9 +29,10 @@ public class FileSystem : IPersistance, IConfigPersistance
     // Escreve a string ToWrite em um arquivo acessKey.fileExtension (padrão .json); Se a pasta não existir, ela é criada
     private async Task Write(string ToWrite, string acessKey, string fileExtension = ".json")
     {
-        if (!Directory.Exists(Path.GetDirectoryName(acessKey + fileExtension)))
+        var rootDir = Path.GetDirectoryName(acessKey + fileExtension);
+        if (rootDir != null & !Directory.Exists(rootDir))
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(acessKey + fileExtension));
+            Directory.CreateDirectory(rootDir);
         }
 
         using (StreamWriter sw = new(acessKey + fileExtension))
