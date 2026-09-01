@@ -1,33 +1,38 @@
 # DiscordGarçom
-
-DiscordGarçom is a personal modular Discord bot built in C# using DSharpPlus. The project is designed around a container that loads independent modules, each one responsible for a specific feature, such as chat phrases, temporary voice channels, party management, and music playback.
-
-It was created as a bot framework for a specific Discord server, but the architecture is reusable: you can add new modules, configure persistence, and register commands without rewriting the whole bot lifecycle. DiscordGarçom contains:
-- a central runtime container, `SimpleContainer`, that boots the bot and registers modules. 
-- a modular architecture where each feature lives in its own class
-- command registration via DSharpPlus commands and `CommandBuilder`
-- JSON-based persistence for module data and configuration
-- support for scheduling recurring tasks and background automation with `CoreScheduler`
+DiscordGarçom is an simple personal discord bot made in C# based on DSharpPlus framework. You can use it as base for your own bot or use it directly. It features:
+- a central runtime container, `SimpleContainer`, that boots the bot and manages the modules. 
+- JSON-based persistence for data and configuration
+- support for scheduling timed, future and recurring tasks with `CoreScheduler`
+- support for temporary voice channels with `CoreChannelManager`
+- an easy to use and extend modular architecture
 
 ## Some Modules
 
 The default build includes these modules:
 
 - `Frases`: reads quotes or messages from a source channel and periodically sends them to a broadcast channel.
-- `Party`: manages custom matches, score tracking, and team-based match flows.
-- `Utility`: provides convenience commands for voice channels, member counting, mention utilities, and user movement.
-- `Jukebox`: plays music through with queue and playback controls, using Lavalink4Net.
-- `CoreChannelManager`: creates and cleans up temporary voice channels.
-- `CoreScheduler`: schedules callbacks and repeating work.
-- `CoreBackuper`: performs backups of module data.
+- `Party`: manages custom matches, score tracking, and team-based match flows. You can use it to easily create and separate teams into different voice chats.
+- `Utility`: provides commands for things like member counting, member mention, user movement, etc.
+- `Jukebox`: plays music in a voice chat using Lavalink.
 
 ## Running the bot
 
+First you need to get a discord bot token and connect it to your discord server. Create an folder called `data` in the running directory, then create a file called `BotToken` with the token as plaintext and `CommandPrefixes.json`, a json containing all your bot's command prefixes, for example: 
+```json
+[
+    "!",
+    "#",
+    "$"    
+]
+``` 
+
+Now all you need is an entry point to the bot. Create an main file (or use [Init](Containers\Init.cs)), instantiate all the modules the bot will be using and create SimpleContainer, passing an persistance like `FileSystem`, a array of modules and a ulong of the discord server id you want the bot to run on. 
+
+**IMPORTANT**: At the moment, both the SimpleContainer and the default modules dont suport your bot to be on multiple server.
+
 ## Creating custom modules
 
-## Requirements
+You can create your own modules simply by creating an child class inheriting BaseModule. The BaseModule already handles persistance, configuration and also has helper methods for you. Give it an unique name, create your commands and return then 
+If you dont want to inherit BaseModule, then you need to implement IModule.
 
-- .NET 9 SDK
-- a Discord bot token
-- a valid guild/server ID for `LinkedServerID`
-- a connected Lavalink instance if you want to use the music module
+See [ExampleModule](Containers/Core/Modules/Examples/ExampleModule.cs) for more details
