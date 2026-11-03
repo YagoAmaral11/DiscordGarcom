@@ -60,9 +60,10 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         var partida_pontuacao = CommandBuilder.From(SetScore).WithParent(partida);
         var partida_jogo = CommandBuilder.From(SetGame).WithParent(partida);
         var partida_substituir = CommandBuilder.From(ChangePlayers).WithParent(partida);
+        var sort = CommandBuilder.From(Sort).WithName("sortear");
         partida.WithSubcommands([partida_atual, partida_mostrar, partida_finalizar, partida_listar, partida_pontuacao, partida_jogo, partida_substituir]);
 
-        party.WithSubcommands([fastMix, partida]);
+        party.WithSubcommands([fastMix, partida, sort]);
 
         return [party];
     }
@@ -289,9 +290,9 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
         tempTeamsVoiceChannelsLifespan ??= TimeSpan.FromHours(1);
         var lifespan = DateTimeOffset.Now + tempTeamsVoiceChannelsLifespan.Value;
-        var canalA = await channelManager.NewGeneralTempChannel(lifespan, "🔵 Time A");
+        var canalA = await channelManager.NewGeneralTempChannel(lifespan, "🔴 Time A");
         await Task.Delay(1500);
-        var canalB = await channelManager.NewGeneralTempChannel(lifespan, "🔴 Time B");
+        var canalB = await channelManager.NewGeneralTempChannel(lifespan, "🔵 Time B");
 
         foreach (var playerID in match.Players)
         {
@@ -561,6 +562,17 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
             return false;
 
         return match.Admin == user.Id;
+    }
+    private Partida? GetLastAdminMatch(ulong userID)
+    {
+        var matchesAsAdmin = data.PartidasAntigas.Union(data.PartidasAtivas).Where(match => match.Value.Admin == userID);
+
+        if (matchesAsAdmin.Any() == false)
+            return null;
+
+        var lastMatch = matchesAsAdmin.OrderByDescending(match => match.Value.Date).FirstOrDefault();
+
+        return lastMatch.Value;        
     }
 
 
@@ -893,19 +905,35 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("pontuacao")]
     [Description("Altera a pontuação dos times de uma partida")]
-    public async Task SetScore(CommandContext ctx, [Description("ID da partida")] string id, 
-        [Description("Pontuação do Time A")] float timeA, [Description("Pontuação do Time B")] float timeB)
+    public async Task SetScore(CommandContext ctx, [Description("Pontuação do Time A")] float timeA, [Description("Pontuação do Time B")] float timeB, [Description("ID da partida")] string id = null)
     {
         if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {
-            Partida match = GetMatch(id, false);
-            if (match == null)
+            Partida match = null;
+
+            if (id == null)
             {
-                await CommandErrorResponse(ctx, "Essa partida não existe");
-                return;
+                var last = GetLastAdminMatch(ctx.User.Id);
+
+                if (last == null)
+                {
+                    await CommandErrorResponse(ctx, "Você não participou de nenhuma partida como admin");
+                    return;
+                }
+
+                match = last;
+            }
+            else
+            {
+                match = GetMatch(id, false);
+                if (match == null)
+                {
+                    await CommandErrorResponse(ctx, "Essa partida não existe");
+                    return;
+                }
             }
 
             if (!IsMatchAdmin(match.UUID, ctx.Member))
@@ -928,19 +956,36 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("jogo")]
     [Description("Altera o jogo de uma partida")]
-    public async Task SetGame(CommandContext ctx, [Description("ID da partida")] string id, [Description("Nome do jogo")] string jogo)
+    public async Task SetGame(CommandContext ctx, [Description("Nome do jogo")] string jogo, [Description("ID da partida")] string id)
     {
         if (!await CommandReadyPreCondition(ctx))
             return;
 
         try
         {
-            Partida match = GetMatch(id, false);
-            if (match == null)
+            Partida match = null;
+
+            if (id == null)
             {
-                await CommandErrorResponse(ctx, "Essa partida não existe");
-                return;
+                var last = GetLastAdminMatch(ctx.User.Id);
+
+                if (last == null)
+                {
+                    await CommandErrorResponse(ctx, "Você não participou de nenhuma partida como admin");
+                    return;
+                }
+
+                match = last;
             }
+            else
+            {
+                match = GetMatch(id, false);
+                if (match == null)
+                {
+                    await CommandErrorResponse(ctx, "Essa partida não existe");
+                    return;
+                }
+            }            
 
             if (!IsMatchAdmin(match.UUID, ctx.Member))
             {
@@ -1015,6 +1060,62 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
         }
     }
 
+    [Command("sort")]
+    [Description("Sorteia um valor de uma lista, separada por vírgulas (,) ou ponto e vírgula (;)")]
+    public async Task Sort(CommandContext ctx, [Description("Elementos a serem sorteados")] string toSort)
+    {
+        if (!await CommandReadyPreCondition(ctx))
+            return;
+
+        try
+        {
+            char[] del = [',', ';'];
+            string[] tokens = toSort.Trim().Split(del);
+            int qnt = tokens.Length;
+
+            if (qnt > 1)
+            {
+                string chosen = tokens[Random.Shared.Next(qnt)];
+                await ctx.RespondAsync($"O valor sorteado foi: {chosen}");
+            }
+            else if (qnt == 1)
+            {
+                await ctx.RespondAsync($"O valor sorteado foi: {tokens[0]}");
+            }
+            else
+            {
+                await CommandErrorResponse(ctx, "Erro ao separar os valores");
+                return;
+            }
+        }
+        catch(Exception e) 
+        {
+            await DumpException(e);
+        }
+    }
+
+    [Command("criar")]
+    [Description("Cria uma partida com os dois times passados, separados por vírgulas (,) ou ponto e vírgula (;)")]
+    public async Task CreateMatch(CommandContext ctx, string timeA, string timeB)
+    {
+        if (!await CommandReadyPreCondition(ctx))
+            return;
+
+        try
+        {
+            throw new NotImplementedException();
+
+            char[] del = [',', ';'];
+            string[] tokensTimeA = timeA.Trim().Split(del);
+            string[] tokensTimeB = timeB.Trim().Split(del);
+
+
+        }
+        catch (Exception e)
+        {
+            await DumpException(e);
+        }
+    }
 
 
     public enum AutoSortResult
