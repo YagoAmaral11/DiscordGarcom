@@ -956,7 +956,7 @@ public class Party(IPersistance persistance, IConfigPersistance configPersistanc
 
     [Command("jogo")]
     [Description("Altera o jogo de uma partida")]
-    public async Task SetGame(CommandContext ctx, [Description("Nome do jogo")] string jogo, [Description("ID da partida")] string id)
+    public async Task SetGame(CommandContext ctx, [Description("Nome do jogo")] string jogo, [Description("ID da partida")] string id = null)
     {
         if (!await CommandReadyPreCondition(ctx))
             return;
